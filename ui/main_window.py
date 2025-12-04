@@ -6,16 +6,64 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QMessageBox, QListWidget, QCheckBox, QAbstractItemView,
                                QSplitter, QFrame, QGridLayout, QComboBox)
 from PySide6.QtCore import QThread, Signal, QTimer, QUrl, Qt
-from PySide6.QtGui import QDesktopServices, QFont, QColor
+# [回归] 引入拖拽事件
+from PySide6.QtGui import QDesktopServices, QFont, QColor, QDragEnterEvent, QDropEvent
 from config import DIRS, CHUNK_SIZES
 from core.file_cipher import FileCipherEngine
 from core.logger import sys_logger
 
 
-# ================= 批量工作线程 =================
+# =========================================================
+# [回归功能] 支持拖拽文件的自定义列表控件
+# =========================================================
+class DragDropListWidget(QListWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAcceptDrops(True)  # 开启拖拽接收
+        self.setDragDropMode(QAbstractItemView.DropOnly)
+        self.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        # 样式优化
+        self.setStyleSheet("""
+            QListWidget {
+                background: #252526; border: 1px solid #3e3e42; color: #fff; 
+                border-radius: 4px; padding: 5px;
+            }
+            QListWidget::item:selected { background: #007acc; }
+        """)
+
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+
+    def dropEvent(self, event: QDropEvent):
+        if event.mimeData().hasUrls():
+            event.setDropAction(Qt.CopyAction)
+            event.accept()
+            links = []
+            for url in event.mimeData().urls():
+                file_path = url.toLocalFile()
+                if os.path.isfile(file_path):  # 只接受文件
+                    links.append(file_path)
+            self.addItems(links)
+        else:
+            event.ignore()
+
+
+# =========================================================
+# 批量工作线程 (进度算法修正 + 日志增强)
+# =========================================================
 class BatchWorkerThread(QThread):
+    # 信号: [状态栏文本, 当前文件进度, 全局进度]
     progress = Signal(str, int, int)
     finished = Signal(dict)
+    # [回归] 实时日志信号
+    log_update = Signal(str)
 
     def __init__(self, files, key, is_encrypt, encrypt_filename=False, custom_out_dir=None):
         super().__init__()
@@ -32,18 +80,37 @@ class BatchWorkerThread(QThread):
         key_bytes = hashlib.sha256(self.k.encode()).digest()
 
         results = {"success": [], "fail": []}
-        total = len(self.files)
+        total_files = len(self.files)
+        action_str = "加密" if self.is_enc else "解密"
+
+        # [日志] 开始记录
+        start_msg = f"--- 开始批量{action_str}任务 (共 {total_files} 个文件) ---"
+        self.log_update.emit(start_msg)
+        sys_logger.log(start_msg)
 
         for idx, f_path in enumerate(self.files):
             if not self.running: break
             fname = os.path.basename(f_path)
+            start_t = time.time()
 
-            self.progress.emit(f"正在处理 [{idx + 1}/{total}]: {fname}", 0, int((idx / total) * 100))
+            # 全局进度基数
+            global_base_pct = (idx / total_files) * 100
+            self.progress.emit(f"正在处理 [{idx + 1}/{total_files}]: {fname}", 0, int(global_base_pct))
+
+            # 回调函数 (包含智能防抖)
+            last_p = -1
 
             def cb(curr, tot):
-                p = int((curr / tot) * 100)
-                if p % 2 == 0:
-                    self.progress.emit(f"正在处理 [{idx + 1}/{total}]: {fname}", p, int((idx / total) * 100))
+                nonlocal last_p
+                if tot == 0:
+                    p = 0
+                else:
+                    p = int((curr / tot) * 100)
+
+                if p > last_p:
+                    last_p = p
+                    current_global = int(((idx + (p / 100.0)) / total_files) * 100)
+                    self.progress.emit(f"正在处理 [{idx + 1}/{total_files}]: {fname} ({p}%)", p, current_global)
 
             # 路径逻辑
             if self.custom_out and os.path.exists(self.custom_out):
@@ -51,14 +118,25 @@ class BatchWorkerThread(QThread):
             else:
                 out_dir = os.path.dirname(f_path)
 
-            suc, msg, out = engine.process_file(
+            # 执行核心逻辑
+            suc, msg, out_path = engine.process_file(
                 f_path, out_dir, key_bytes, self.is_enc, self.enc_name, cb
             )
 
+            duration = (time.time() - start_t) * 1000  # ms
+
             if suc:
-                results["success"].append((f_path, out))
+                results["success"].append((f_path, out_path))
+                # [回归] 详细日志记录
+                out_name = os.path.basename(out_path)
+                log_detail = f"[{action_str}成功] {fname} -> {out_name} (耗时: {int(duration)}ms)"
+                self.log_update.emit(log_detail)
+                sys_logger.log(log_detail)
             else:
                 results["fail"].append((f_path, msg))
+                log_fail = f"[{action_str}失败] {fname} | 原因: {msg}"
+                self.log_update.emit(log_fail)
+                sys_logger.log(log_fail, "error")
 
         self.progress.emit("任务队列完成", 100, 100)
         self.finished.emit(results)
@@ -71,7 +149,7 @@ class BatchWorkerThread(QThread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Encryption Studio v6.8 (Auto-Log Refresh)")
+        self.setWindowTitle("Encryption Studio v7.2 (Full Features)")
         self.resize(1100, 780)
         self.setMinimumSize(950, 650)
         self._apply_theme()
@@ -102,7 +180,7 @@ class MainWindow(QMainWindow):
 
         self._init_encrypt_tab()
         self._init_decrypt_tab()
-        self._init_log_tab()  # 在这里启动了日志定时器
+        self._init_log_tab()
 
     def _apply_theme(self):
         self.setStyleSheet("""
@@ -130,8 +208,7 @@ class MainWindow(QMainWindow):
                 color: #007acc; 
             }
 
-            QListWidget, QTextEdit, QLineEdit { background: #252526; border: 1px solid #3e3e42; color: #fff; border-radius: 4px; padding: 5px; }
-            QListWidget::item:selected { background: #007acc; }
+            QLineEdit { background: #252526; border: 1px solid #3e3e42; color: #fff; border-radius: 4px; padding: 5px; }
 
             QPushButton { background: #3e3e42; color: #fff; border: 1px solid #555; padding: 8px 16px; border-radius: 4px; }
             QPushButton:hover { background: #505055; border-color: #007acc; }
@@ -150,16 +227,16 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(20, 30, 20, 20)
 
         # --- 左侧 ---
-        left_grp = QGroupBox("1. 文件队列")
+        left_grp = QGroupBox("1. 文件队列 (支持拖拽)")
         l_left = QVBoxLayout(left_grp)
         l_left.setContentsMargins(15, 25, 15, 15)
 
-        lbl_hint = QLabel("💡 提示：点击“添加文件”或拖入文件。")
+        lbl_hint = QLabel("💡 提示：点击“添加文件”或将文件拖入下方区域。")
         lbl_hint.setStyleSheet("color: #888; margin-bottom: 5px;")
         l_left.addWidget(lbl_hint)
 
-        self.enc_list = QListWidget()
-        self.enc_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        # [回归] 使用 DragDropListWidget
+        self.enc_list = DragDropListWidget()
 
         btn_layout = QHBoxLayout()
         btn_add = QPushButton("➕ 添加文件");
@@ -254,12 +331,12 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(20, 30, 20, 20)
 
         # 左侧
-        left_grp = QGroupBox("1. 加密文件队列 (.enc)")
+        left_grp = QGroupBox("1. 加密文件队列 (支持拖拽)")
         l_left = QVBoxLayout(left_grp)
         l_left.setContentsMargins(15, 25, 15, 15)
 
-        self.dec_list = QListWidget()
-        self.dec_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        # [回归] 使用 DragDropListWidget
+        self.dec_list = DragDropListWidget()
 
         btn_layout = QHBoxLayout()
         btn_add = QPushButton("➕ 添加文件");
@@ -288,6 +365,7 @@ class MainWindow(QMainWindow):
 
         l_right.addSpacing(20)
 
+        # 路径选择
         l_right.addWidget(QLabel("输出位置:"))
         path_layout = QHBoxLayout()
         self.lbl_dec_path = QLineEdit("默认: 源文件同级目录")
@@ -340,29 +418,30 @@ class MainWindow(QMainWindow):
         layout.addWidget(right_grp)
         self.tabs.addTab(tab, "🔓 解密工作台")
 
-    # ================= [Tab 3] 日志 (含自动刷新) =================
+    # ================= [Tab 3] 日志 =================
     def _init_log_tab(self):
         tab = QWidget()
         l = QVBoxLayout(tab)
         l.setContentsMargins(20, 30, 20, 20)
 
-        # 头部说明
-        head_l = QHBoxLayout()
-        head_l.addWidget(QLabel("📝 系统运行日志 (每秒自动刷新)"))
-        head_l.addStretch()
+        head = QHBoxLayout()
+        head.addWidget(QLabel("📝 实时操作日志 (自动刷新)"))
+        head.addStretch()
 
         self.log_txt = QTextEdit()
         self.log_txt.setReadOnly(True)
-        self.log_txt.setStyleSheet("background: #111; color: #0f0; font-family: Consolas;")
+        # 深色日志风格
+        self.log_txt.setStyleSheet(
+            "background: #1e1e1e; border: 1px solid #444; color: #9cdcfe; font-family: Consolas;")
 
-        l.addLayout(head_l)
+        l.addLayout(head)
         l.addWidget(self.log_txt)
         self.tabs.addTab(tab, "🛡️ 系统日志")
 
-        # [新功能] 启动 1秒 定时刷新
+        # 兜底定时刷新
         self.log_timer = QTimer(self)
         self.log_timer.timeout.connect(self.load_log)
-        self.log_timer.start(1000)  # 1000ms = 1s
+        self.log_timer.start(2000)  # 每2秒检查一次文件变化
 
     # ================= 逻辑方法 =================
 
@@ -390,7 +469,7 @@ class MainWindow(QMainWindow):
 
     def add_files(self, is_enc):
         if is_enc:
-            files, _ = QFileDialog.getOpenFileNames(self, "添加文件", "", "All Files (*)")
+            files, _ = QFileDialog.getOpenFileNames(self, "添加文件 (可多选)", "", "All Files (*)")
             if files: self.enc_list.addItems(files)
         else:
             files, _ = QFileDialog.getOpenFileNames(self, "添加加密文件", "", "Encrypted (*.enc)")
@@ -417,6 +496,8 @@ class MainWindow(QMainWindow):
             custom_out_dir=self.custom_enc_path
         )
         self.worker.progress.connect(lambda msg, s, t: (self.enc_status.setText(msg), self.enc_pbar.setValue(t)))
+        # [回归] 实时日志连接
+        self.worker.log_update.connect(self.append_log_immediate)
         self.worker.finished.connect(lambda res: self.on_finish(res, True))
         self.worker.start()
 
@@ -435,6 +516,8 @@ class MainWindow(QMainWindow):
             custom_out_dir=self.custom_dec_path
         )
         self.worker.progress.connect(lambda msg, s, t: (self.dec_status.setText(msg), self.dec_pbar.setValue(t)))
+        # [回归] 实时日志连接
+        self.worker.log_update.connect(self.append_log_immediate)
         self.worker.finished.connect(lambda res: self.on_finish(res, False))
         self.worker.start()
 
@@ -474,7 +557,6 @@ class MainWindow(QMainWindow):
             self.dec_status.setText("任务完成")
 
         QMessageBox.information(self, "结果报告", msg)
-        sys_logger.log(f"任务结束. {msg.replace(chr(10), ', ')}")
 
     def toggle_ui(self, enable):
         self.tabs.setEnabled(enable)
@@ -485,34 +567,28 @@ class MainWindow(QMainWindow):
         else:
             QMessageBox.information(self, "提示", "尚未生成输出文件，无法打开目录。")
 
-    # [优化版] 自动刷新日志
+    # [回归] 实时追加日志
+    def append_log_immediate(self, msg):
+        self.log_txt.append(f"[{time.strftime('%H:%M:%S')}] {msg}")
+        self.log_txt.verticalScrollBar().setValue(self.log_txt.verticalScrollBar().maximum())
+
+    # 定时器读取文件 (用于捕获非实时日志或手动修改)
     def load_log(self):
         try:
-            log_dir = DIRS["LOGS"]
-            if not os.path.exists(log_dir): return
+            f = sorted(os.listdir(DIRS["LOGS"]))[-1]
+            with open(os.path.join(DIRS["LOGS"], f), 'r', encoding='utf-8-sig') as file:
+                content = file.read()
 
-            files = sorted(os.listdir(log_dir))
-            if not files: return
+            if content == self.log_txt.toPlainText(): return
 
-            target_log = os.path.join(log_dir, files[-1])
-            with open(target_log, 'r', encoding='utf-8-sig') as f:
-                content = f.read()
-
-            # [关键] 防抖：只有内容变了才刷新界面
-            if content == self.log_txt.toPlainText():
-                return
-
-            # [关键] 保持滚动条位置
-            scrollbar = self.log_txt.verticalScrollBar()
-            was_at_bottom = scrollbar.value() == scrollbar.maximum()
+            sb = self.log_txt.verticalScrollBar()
+            was_at_bottom = sb.value() == sb.maximum()
 
             self.log_txt.setText(content)
 
-            # 如果之前在底部，刷新后继续保持底部；否则保持当前阅读位置
             if was_at_bottom:
-                scrollbar.setValue(scrollbar.maximum())
+                sb.setValue(sb.maximum())
             else:
-                scrollbar.setValue(min(scrollbar.value(), scrollbar.maximum()))
-
-        except Exception:
+                sb.setValue(min(sb.value(), sb.maximum()))
+        except:
             pass

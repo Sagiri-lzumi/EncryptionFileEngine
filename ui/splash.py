@@ -1,21 +1,26 @@
 from PySide6.QtWidgets import QSplashScreen
-from PySide6.QtCore import Qt, QTimer, QRectF
-# [修正点] 补全了 QLinearGradient 的导入
-from PySide6.QtGui import QColor, QFont, QPainter, QPen, QConicalGradient, QRadialGradient, QBrush, QLinearGradient
+from PySide6.QtCore import Qt, QTimer, QRectF, QPointF
+# [重要] 确保导入了所有必要的绘图类
+from PySide6.QtGui import (QColor, QFont, QPainter, QPen, QConicalGradient,
+                           QRadialGradient, QLinearGradient, QBrush, QPainterPath)
+import math
 
 
 class IntroScreen(QSplashScreen):
     def __init__(self):
         super().__init__()
-        self.setFixedSize(450, 300)
+        # 尺寸稍微拉宽一点，更有电影感
+        self.setFixedSize(500, 320)
         self.setWindowFlag(Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
 
         # 动画变量
-        self.angle_outer = 0
-        self.angle_inner = 0
-        self.pulse_val = 0
-        self.loading_text = "SYSTEM BOOT..."
+        self.angle_fast = 0
+        self.angle_slow = 0
+        self.pulse_scale = 1.0
+        self.pulse_direction = 0.02
+
+        self.loading_text = "CORE INITIALIZING..."
         self.progress = 0
 
         # 60FPS 极顺滑刷新 (约16ms)
@@ -24,88 +29,149 @@ class IntroScreen(QSplashScreen):
         self.timer.start(16)
 
     def animate(self):
-        # 外圈快转
-        self.angle_outer = (self.angle_outer + 8) % 360
-        # 内圈慢转反向
-        self.angle_inner = (self.angle_inner - 4) % 360
-        # 呼吸效果 (0-255循环)
-        self.pulse_val = (self.pulse_val + 5) % 180
-        self.update()
+        # 旋转角度更新
+        self.angle_fast = (self.angle_fast + 12) % 360
+        self.angle_slow = (self.angle_slow - 5) % 360
+
+        # 呼吸缩放效果 (在 0.95 到 1.05 之间波动)
+        self.pulse_scale += self.pulse_direction
+        if self.pulse_scale > 1.05 or self.pulse_scale < 0.95:
+            self.pulse_direction *= -1
+
+        self.update()  # 触发重绘
 
     def update_progress(self, val, msg):
         self.progress = val
-        self.loading_text = msg.upper()
+        # 让文字看起来像是代码在跳动
+        self.loading_text = f">_{msg.upper()}"
         self.update()
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        # 开启高质量抗锯齿
+        painter.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing | QPainter.SmoothPixmapTransform)
 
         w = self.width()
         h = self.height()
         rect = self.rect()
+        cx, cy = w // 2, h // 2 - 15
 
-        # 1. 绘制背景 (深空灰卡片)
+        # =================================================
+        # 1. 绘制背景 (深空径向渐变，营造景深)
+        # =================================================
         bg_rect = rect.adjusted(5, 5, -5, -5)
-        painter.setBrush(QColor("#0f1012"))
-        painter.setPen(QPen(QColor("#333333"), 1))
-        painter.drawRoundedRect(bg_rect, 12, 12)
+        # 径向渐变中心点在画面中心稍偏上
+        bg_grad = QRadialGradient(cx, cy, w * 0.8)
+        bg_grad.setColorAt(0.0, QColor("#1a1b20"))  # 中心稍亮
+        bg_grad.setColorAt(1.0, QColor("#090a0c"))  # 边缘极暗
 
-        # 2. 中心坐标
-        cx, cy = w // 2, h // 2 - 20
+        painter.setBrush(bg_grad)
+        painter.setPen(QPen(QColor("#2a2b30"), 1))  # 微弱的边框光
+        painter.drawRoundedRect(bg_rect, 15, 15)
 
-        # 3. 绘制外圈光环 (High Speed Ring)
-        grad_outer = QConicalGradient(cx, cy, -self.angle_outer)
-        grad_outer.setColorAt(0, QColor("#00e5ff"))  # 亮青色
-        grad_outer.setColorAt(0.1, QColor("#00e5ff"))
-        grad_outer.setColorAt(0.5, Qt.transparent)
-        grad_outer.setColorAt(1, Qt.transparent)
+        # =================================================
+        # 2. 绘制中心能量核心 (呼吸光点)
+        # =================================================
+        painter.save()
+        painter.translate(cx, cy)
+        painter.scale(self.pulse_scale, self.pulse_scale)
+
+        # 核心高亮
+        core_grad = QRadialGradient(0, 0, 20)
+        core_grad.setColorAt(0.0, QColor(255, 255, 255, 200))  # 极亮白芯
+        core_grad.setColorAt(0.3, QColor("#00e5ff"))  # 青色光晕
+        core_grad.setColorAt(1.0, Qt.transparent)
 
         painter.setPen(Qt.NoPen)
-        painter.setBrush(grad_outer)
+        painter.setBrush(core_grad)
+        painter.drawEllipse(QPointF(0, 0), 20, 20)
+        painter.restore()
 
-        # 绘制圆环
-        painter.drawPie(cx - 50, cy - 50, 100, 100, 0, 360 * 16)
+        # =================================================
+        # 3. 绘制动态能量环 (多层光晕叠加)
+        # =================================================
 
-        # 4. 绘制内圈 (Data Ring)
-        grad_inner = QConicalGradient(cx, cy, -self.angle_inner)
-        grad_inner.setColorAt(0, QColor("#ff0055"))  # 赛博红
-        grad_inner.setColorAt(0.2, Qt.transparent)
+        # --- 外圈高速环 (青色) ---
+        painter.save()
+        painter.translate(cx, cy)
+        painter.rotate(self.angle_fast)
 
-        painter.setBrush(grad_inner)
-        painter.drawPie(cx - 35, cy - 35, 70, 70, 0, 360 * 16)
+        # 使用锥形渐变模拟扫描尾迹
+        grad_fast = QConicalGradient(0, 0, 0)
+        grad_fast.setColorAt(0.0, QColor("#00e5ff"))  # 亮青头
+        grad_fast.setColorAt(0.2, QColor(0, 229, 255, 50))  # 半透明尾
+        grad_fast.setColorAt(1.0, Qt.transparent)
 
-        # 5. 挖空中心，形成圆环感，并做呼吸背景
-        painter.setPen(Qt.NoPen)
-        # 计算呼吸透明度
-        alpha = 100 + abs(90 - self.pulse_val)  # 100~190
-        painter.setBrush(QColor(20, 20, 25, 255))
-        painter.drawEllipse(cx - 30, cy - 30, 60, 60)
+        pen_fast = QPen(grad_fast, 6)  # 线条宽度
+        pen_fast.setCapStyle(Qt.RoundCap)
+        painter.setPen(pen_fast)
+        # 只画一段弧线，模拟彗星尾巴
+        radius_fast = 60
+        painter.drawArc(QRectF(-radius_fast, -radius_fast, radius_fast * 2, radius_fast * 2), 0, 270 * 16)
 
-        # 6. 中心 Logo / 文字
+        # 增加一层辉光底色
+        pen_glow = QPen(QColor(0, 229, 255, 30), 12)
+        painter.setPen(pen_glow)
+        painter.drawArc(QRectF(-radius_fast, -radius_fast, radius_fast * 2, radius_fast * 2), 10 * 16, 250 * 16)
+        painter.restore()
+
+        # --- 内圈慢速环 (洋红色，反向) ---
+        painter.save()
+        painter.translate(cx, cy)
+        painter.rotate(self.angle_slow)
+
+        grad_slow = QConicalGradient(0, 0, 180)
+        grad_slow.setColorAt(0.0, QColor("#ff0055"))  # 洋红头
+        grad_slow.setColorAt(0.3, QColor(255, 0, 85, 40))
+        grad_slow.setColorAt(1.0, Qt.transparent)
+
+        pen_slow = QPen(grad_slow, 4)
+        pen_slow.setCapStyle(Qt.RoundCap)
+        painter.setPen(pen_slow)
+        radius_slow = 45
+        painter.drawArc(QRectF(-radius_slow, -radius_slow, radius_slow * 2, radius_slow * 2), 0, 220 * 16)
+        painter.restore()
+
+        # =================================================
+        # 4. 绘制文字信息
+        # =================================================
+
+        # 主标题 (带微弱辉光)
+        title_font = QFont("Segoe UI", 22, QFont.Bold)
+        title_font.setLetterSpacing(QFont.AbsoluteSpacing, 2)
+        painter.setFont(title_font)
+
+        # 辉光层
+        painter.setPen(QColor(0, 229, 255, 30))
+        painter.drawText(QRectF(0, h - 110, w, 40), Qt.AlignCenter, "ENCRYPTION CORE")
+        # 实体层
         painter.setPen(QColor("#ffffff"))
-        painter.setFont(QFont("Arial", 14, QFont.Bold))
-        painter.drawText(QRectF(cx - 30, cy - 30, 60, 60), Qt.AlignCenter, "SEC")
+        painter.drawText(QRectF(0, h - 110, w, 40), Qt.AlignCenter, "ENCRYPTION CORE")
 
-        # 7. 底部文字信息
-        painter.setPen(QColor("#888888"))
-        painter.setFont(QFont("Consolas", 9))
-        painter.drawText(QRectF(0, h - 70, w, 20), Qt.AlignCenter, f"{self.loading_text} [{self.progress}%]")
+        # 加载状态文字
+        status_font = QFont("Consolas", 9)
+        painter.setFont(status_font)
+        painter.setPen(QColor("#00e5ff"))  # 青色文字
+        painter.drawText(QRectF(40, h - 50, w - 80, 20), Qt.AlignLeft | Qt.AlignVCenter, self.loading_text)
 
-        # 8. 底部极细进度条
-        bar_bg_rect = QRectF(40, h - 30, w - 80, 4)
-        # 背景槽
+        # 百分比
+        painter.setPen(QColor("#666666"))
+        painter.drawText(QRectF(40, h - 50, w - 80, 20), Qt.AlignRight | Qt.AlignVCenter, f"[{self.progress}%]")
+
+        # =================================================
+        # 5. 极简进度条 (底部细线)
+        # =================================================
+        bar_bg = QRectF(40, h - 25, w - 80, 3)
         painter.setBrush(QColor("#222222"))
-        painter.drawRoundedRect(bar_bg_rect, 2, 2)
+        painter.setPen(Qt.NoPen)
+        painter.drawRoundedRect(bar_bg, 1.5, 1.5)
 
-        # 进度条
         if self.progress > 0:
-            bar_width = (w - 80) * (self.progress / 100.0)
-            bar_fg_rect = QRectF(40, h - 30, bar_width, 4)
-
-            # [修正点] 这里的 QLinearGradient 现在可以正常工作了
+            bar_w = (w - 80) * (self.progress / 100.0)
+            bar_fg = QRectF(40, h - 25, bar_w, 3)
+            # 进度条渐变光
             bar_grad = QLinearGradient(40, 0, w - 40, 0)
             bar_grad.setColorAt(0, QColor("#00e5ff"))
-            bar_grad.setColorAt(1, QColor("#007acc"))
+            bar_grad.setColorAt(1, QColor("#ff0055"))
             painter.setBrush(bar_grad)
-            painter.drawRoundedRect(bar_fg_rect, 2, 2)
+            painter.drawRoundedRect(bar_fg, 1.5, 1.5)

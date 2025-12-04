@@ -36,4 +36,4 @@
 ## 🛠️ 安装与运行 (Installation)
 
 ### 环境要求
-* Python 3.8 或更高版本
+* Python 3.13 或更高版本

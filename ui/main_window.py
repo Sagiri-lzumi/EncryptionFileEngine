@@ -9,22 +9,21 @@ from PySide6.QtCore import QThread, Signal, QTimer, QUrl, Qt
 from PySide6.QtGui import QDesktopServices, QFont, QColor
 from config import DIRS, CHUNK_SIZES
 from core.file_cipher import FileCipherEngine
-from core.text_cipher import TextCipher
 from core.logger import sys_logger
 
 
 # ================= 批量工作线程 =================
 class BatchWorkerThread(QThread):
-    progress = Signal(str, int, int)  # LogMsg, FilePct, TotalPct
+    progress = Signal(str, int, int)
     finished = Signal(dict)
 
-    def __init__(self, files, key, is_encrypt, encrypt_filename=False, force_project_dir=False):
+    def __init__(self, files, key, is_encrypt, encrypt_filename=False, custom_out_dir=None):
         super().__init__()
         self.files = files
         self.k = key
         self.is_enc = is_encrypt
         self.enc_name = encrypt_filename
-        self.force_proj = force_project_dir
+        self.custom_out = custom_out_dir
         self.running = True
 
     def run(self):
@@ -46,11 +45,10 @@ class BatchWorkerThread(QThread):
                 if p % 2 == 0:
                     self.progress.emit(f"正在处理 [{idx + 1}/{total}]: {fname}", p, int((idx / total) * 100))
 
-            # [路径逻辑]
-            if self.force_proj:
-                out_dir = DIRS["ENCRYPTED"] if self.is_enc else DIRS["DECRYPTED"]
+            # 路径逻辑
+            if self.custom_out and os.path.exists(self.custom_out):
+                out_dir = self.custom_out
             else:
-                # 默认: 源文件同级目录
                 out_dir = os.path.dirname(f_path)
 
             suc, msg, out = engine.process_file(
@@ -73,8 +71,8 @@ class BatchWorkerThread(QThread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("EncryptionFileEngine")
-        self.resize(1150, 800)
+        self.setWindowTitle("Encryption Studio v6.8 (Auto-Log Refresh)")
+        self.resize(1100, 780)
         self.setMinimumSize(950, 650)
         self._apply_theme()
 
@@ -87,23 +85,24 @@ class MainWindow(QMainWindow):
         # 1. 顶部状态条
         top_bar = QFrame()
         top_bar.setStyleSheet("background: #252526; border-bottom: 1px solid #333;")
-        top_bar.setFixedHeight(40)
+        top_bar.setMinimumHeight(50)
         top_l = QHBoxLayout(top_bar)
         top_l.addWidget(QLabel("  🛡️ 安全核心: 活跃"))
         top_l.addStretch()
-        top_l.addWidget(QLabel("用户: Administrator  "))
         layout.addWidget(top_bar)
 
         # 2. 内容 Tab
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs)
 
+        # 状态变量
+        self.custom_enc_path = None
+        self.custom_dec_path = None
+        self.last_out_dir = ""
+
         self._init_encrypt_tab()
         self._init_decrypt_tab()
-        self._init_text_tab()
-        self._init_log_tab()
-
-        self.last_out_dir = ""
+        self._init_log_tab()  # 在这里启动了日志定时器
 
     def _apply_theme(self):
         self.setStyleSheet("""
@@ -111,24 +110,23 @@ class MainWindow(QMainWindow):
             QWidget { font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif; font-size: 13px; color: #e0e0e0; }
 
             QTabWidget::pane { border: none; background: #1e1e1e; }
-            QTabBar::tab { background: #2d2d30; color: #888; padding: 10px 20px; margin-right: 2px; }
-            QTabBar::tab:selected { background: #1e1e1e; color: #007acc; border-top: 2px solid #007acc; }
+            QTabBar::tab { background: #2d2d30; color: #888; padding: 12px 25px; margin-right: 2px; }
+            QTabBar::tab:selected { background: #1e1e1e; color: #007acc; border-top: 3px solid #007acc; }
 
-            /* [UI修正] GroupBox 样式优化 */
             QGroupBox { 
                 border: 1px solid #444; 
                 border-radius: 6px; 
-                margin-top: 25px; /* 顶部预留空间给标题 */
-                padding-top: 15px; 
+                margin-top: 25px; 
                 font-weight: bold; 
+                font-size: 14px;
             }
             QGroupBox::title { 
                 subcontrol-origin: margin; 
                 subcontrol-position: top left;
                 left: 15px; 
-                top: 0px; /* 标题位置修正 */
+                top: 0px; 
                 padding: 0 5px; 
-                background: #1e1e1e; /* 背景遮挡边框 */
+                background-color: #1e1e1e; 
                 color: #007acc; 
             }
 
@@ -137,29 +135,26 @@ class MainWindow(QMainWindow):
 
             QPushButton { background: #3e3e42; color: #fff; border: 1px solid #555; padding: 8px 16px; border-radius: 4px; }
             QPushButton:hover { background: #505055; border-color: #007acc; }
-            QPushButton#ActionBtn { background: #007acc; border: none; font-weight: bold; font-size: 14px; }
+            QPushButton#ActionBtn { background: #007acc; border: none; font-weight: bold; font-size: 14px; padding: 12px; }
             QPushButton#ActionBtn:hover { background: #0062a3; }
+            QPushButton#SmallBtn { padding: 4px 10px; font-size: 12px; }
 
-            QProgressBar { border: none; background: #2d2d30; height: 6px; border-radius: 3px; }
-            QProgressBar::chunk { background: #007acc; border-radius: 3px; }
+            QProgressBar { border: none; background: #2d2d30; height: 8px; border-radius: 4px; }
+            QProgressBar::chunk { background: #007acc; border-radius: 4px; }
         """)
 
     # ================= [Tab 1] 加密 =================
     def _init_encrypt_tab(self):
         tab = QWidget()
         layout = QHBoxLayout(tab)
+        layout.setContentsMargins(20, 30, 20, 20)
 
-        # [UI修正] 强制增加顶部边距，防止标题被切掉
-        # setContentsMargins(left, top, right, bottom)
-        layout.setContentsMargins(20, 40, 20, 20)
-
-        # --- 左侧：文件队列 ---
-        left_grp = QGroupBox("1. 文件队列 (单文件/批量)")
+        # --- 左侧 ---
+        left_grp = QGroupBox("1. 文件队列")
         l_left = QVBoxLayout(left_grp)
-        # [UI修正] 内部增加间距，防止列表顶到标题
-        l_left.setContentsMargins(15, 30, 15, 15)
+        l_left.setContentsMargins(15, 25, 15, 15)
 
-        lbl_hint = QLabel("💡 提示：点击“添加文件”或直接拖入。\n加密结果默认保存在源文件同级目录下。")
+        lbl_hint = QLabel("💡 提示：点击“添加文件”或拖入文件。")
         lbl_hint.setStyleSheet("color: #888; margin-bottom: 5px;")
         l_left.addWidget(lbl_hint)
 
@@ -180,33 +175,45 @@ class MainWindow(QMainWindow):
         l_left.addWidget(self.enc_list)
         l_left.addLayout(btn_layout)
 
-        # --- 右侧：设置与执行 ---
+        # --- 右侧 ---
         right_grp = QGroupBox("2. 加密配置")
         right_grp.setFixedWidth(380)
         l_right = QVBoxLayout(right_grp)
-        l_right.setContentsMargins(15, 30, 15, 15)  # 内部间距
+        l_right.setContentsMargins(20, 25, 20, 20)
 
         l_right.addWidget(QLabel("设置密码:"))
         self.enc_pwd = QLineEdit()
         self.enc_pwd.setPlaceholderText("在此输入密码...")
         self.enc_pwd.setEchoMode(QLineEdit.Password)
+        self.enc_pwd.setMinimumHeight(35)
         l_right.addWidget(self.enc_pwd)
 
         l_right.addSpacing(20)
 
-        self.lbl_chunk = QLabel("⚡ 分块策略: 智能自动托管")
-        self.lbl_chunk.setStyleSheet("color: #4ec9b0; font-style: italic;")
-        l_right.addWidget(self.lbl_chunk)
+        # 输出路径
+        l_right.addWidget(QLabel("输出位置:"))
+        path_layout = QHBoxLayout()
+        self.lbl_enc_path = QLineEdit("默认: 源文件同级目录")
+        self.lbl_enc_path.setReadOnly(True)
+        self.lbl_enc_path.setStyleSheet("color: #aaa; font-style: italic;")
 
-        # 路径选择
-        self.chk_save_proj = QCheckBox("📂 另存到程序专用目录 (EncryptedFile)")
-        self.chk_save_proj.setToolTip(
-            "默认关闭：结果保存在源文件同级目录。\n开启后：结果保存在程序的 EncryptedFile 文件夹内。")
-        self.chk_save_proj.setChecked(False)
-        l_right.addWidget(self.chk_save_proj)
+        btn_sel_path = QPushButton("📂 选择")
+        btn_sel_path.setObjectName("SmallBtn")
+        btn_sel_path.clicked.connect(lambda: self.select_out_dir(True))
+
+        btn_rst_path = QPushButton("↺ 重置")
+        btn_rst_path.setObjectName("SmallBtn")
+        btn_rst_path.setToolTip("恢复为默认源文件目录")
+        btn_rst_path.clicked.connect(lambda: self.reset_out_dir(True))
+
+        path_layout.addWidget(self.lbl_enc_path)
+        path_layout.addWidget(btn_sel_path)
+        path_layout.addWidget(btn_rst_path)
+        l_right.addLayout(path_layout)
+
+        l_right.addSpacing(15)
 
         self.chk_name = QCheckBox("🔏 混淆文件名 (防破解)")
-        self.chk_name.setToolTip("勾选后，文件名将变为随机乱码，但解密时会自动还原。")
         self.chk_name.setChecked(True)
         l_right.addWidget(self.chk_name)
 
@@ -222,16 +229,17 @@ class MainWindow(QMainWindow):
 
         self.btn_enc_run = QPushButton("🚀 开始加密")
         self.btn_enc_run.setObjectName("ActionBtn")
-        self.btn_enc_run.setFixedHeight(45)
+        self.btn_enc_run.setMinimumHeight(50)
         self.btn_enc_run.clicked.connect(self.run_encrypt)
 
-        self.btn_open_enc = QPushButton("📂 打开输出位置")
+        self.btn_open_enc = QPushButton("📂 打开输出文件夹")
         self.btn_open_enc.setVisible(False)
+        self.btn_open_enc.setMinimumHeight(40)
         self.btn_open_enc.clicked.connect(self.open_last_folder)
 
         l_right.addWidget(self.enc_status)
         l_right.addWidget(self.enc_pbar)
-        l_right.addSpacing(10)
+        l_right.addSpacing(15)
         l_right.addWidget(self.btn_enc_run)
         l_right.addWidget(self.btn_open_enc)
 
@@ -243,14 +251,12 @@ class MainWindow(QMainWindow):
     def _init_decrypt_tab(self):
         tab = QWidget()
         layout = QHBoxLayout(tab)
+        layout.setContentsMargins(20, 30, 20, 20)
 
-        # [UI修正] 顶部边距
-        layout.setContentsMargins(20, 40, 20, 20)
-
-        # 左侧列表
+        # 左侧
         left_grp = QGroupBox("1. 加密文件队列 (.enc)")
         l_left = QVBoxLayout(left_grp)
-        l_left.setContentsMargins(15, 30, 15, 15)
+        l_left.setContentsMargins(15, 25, 15, 15)
 
         self.dec_list = QListWidget()
         self.dec_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -268,26 +274,44 @@ class MainWindow(QMainWindow):
         l_left.addWidget(self.dec_list);
         l_left.addLayout(btn_layout)
 
-        # 右侧设置
+        # 右侧
         right_grp = QGroupBox("2. 解密配置")
         right_grp.setFixedWidth(380)
         l_right = QVBoxLayout(right_grp)
-        l_right.setContentsMargins(15, 30, 15, 15)
+        l_right.setContentsMargins(20, 25, 20, 20)
 
         l_right.addWidget(QLabel("解密密码:"))
         self.dec_pwd = QLineEdit();
         self.dec_pwd.setEchoMode(QLineEdit.Password)
+        self.dec_pwd.setMinimumHeight(35)
         l_right.addWidget(self.dec_pwd)
 
         l_right.addSpacing(20)
 
-        # 路径选择
-        self.chk_dec_proj = QCheckBox("📂 另存到程序专用目录 (DecryptedFile)")
-        self.chk_dec_proj.setChecked(False)
-        l_right.addWidget(self.chk_dec_proj)
+        l_right.addWidget(QLabel("输出位置:"))
+        path_layout = QHBoxLayout()
+        self.lbl_dec_path = QLineEdit("默认: 源文件同级目录")
+        self.lbl_dec_path.setReadOnly(True)
+        self.lbl_dec_path.setStyleSheet("color: #aaa; font-style: italic;")
+
+        btn_sel_path = QPushButton("📂 选择")
+        btn_sel_path.setObjectName("SmallBtn")
+        btn_sel_path.clicked.connect(lambda: self.select_out_dir(False))
+
+        btn_rst_path = QPushButton("↺ 重置")
+        btn_rst_path.setObjectName("SmallBtn")
+        btn_rst_path.clicked.connect(lambda: self.reset_out_dir(False))
+
+        path_layout.addWidget(self.lbl_dec_path)
+        path_layout.addWidget(btn_sel_path)
+        path_layout.addWidget(btn_rst_path)
+        l_right.addLayout(path_layout)
+
+        l_right.addSpacing(15)
 
         self.chk_dec_del = QCheckBox("⚠️ 解密后清理加密包 (.enc)")
         self.chk_dec_del.setChecked(False)
+        self.chk_dec_del.setMinimumHeight(25)
         l_right.addWidget(self.chk_dec_del)
 
         l_right.addStretch()
@@ -297,17 +321,18 @@ class MainWindow(QMainWindow):
 
         self.btn_dec_run = QPushButton("🔓 开始解密")
         self.btn_dec_run.setObjectName("ActionBtn")
-        self.btn_dec_run.setStyleSheet("background-color: #2e7d32;")
-        self.btn_dec_run.setFixedHeight(45)
+        self.btn_dec_run.setStyleSheet("background-color: #2e7d32; border: none;")
+        self.btn_dec_run.setMinimumHeight(50)
         self.btn_dec_run.clicked.connect(self.run_decrypt)
 
-        self.btn_open_dec = QPushButton("📂 打开输出位置")
+        self.btn_open_dec = QPushButton("📂 打开输出文件夹")
         self.btn_open_dec.setVisible(False)
+        self.btn_open_dec.setMinimumHeight(40)
         self.btn_open_dec.clicked.connect(self.open_last_folder)
 
         l_right.addWidget(self.dec_status)
         l_right.addWidget(self.dec_pbar)
-        l_right.addSpacing(10)
+        l_right.addSpacing(15)
         l_right.addWidget(self.btn_dec_run)
         l_right.addWidget(self.btn_open_dec)
 
@@ -315,74 +340,57 @@ class MainWindow(QMainWindow):
         layout.addWidget(right_grp)
         self.tabs.addTab(tab, "🔓 解密工作台")
 
-    # ================= [Tab 3] 文本 =================
-    def _init_text_tab(self):
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(20, 40, 20, 20)
-
-        top = QFrame()
-        top.setStyleSheet("background: #252526; border-radius: 4px;")
-        t_l = QHBoxLayout(top)
-        self.txt_algo = QComboBox();
-        self.txt_algo.addItems(["AES", "DES", "TripleDES", "RC4", "Base64", "MD5"])
-        self.txt_key = QLineEdit();
-        self.txt_key.setPlaceholderText("密钥 (Hash忽略)")
-        t_l.addWidget(QLabel("算法:"));
-        t_l.addWidget(self.txt_algo)
-        t_l.addWidget(QLabel("密钥:"));
-        t_l.addWidget(self.txt_key)
-        layout.addWidget(top)
-
-        splitter = QSplitter(Qt.Horizontal)
-
-        w_left = QWidget()
-        l_left = QVBoxLayout(w_left)
-        l_left.addWidget(QLabel("📄 原文"))
-        self.txt_in_enc = QTextEdit()
-        self.txt_out_enc = QTextEdit();
-        self.txt_out_enc.setReadOnly(True)
-        btn_enc = QPushButton("⬇️ 加密");
-        btn_enc.clicked.connect(self.do_txt_enc)
-        l_left.addWidget(self.txt_in_enc);
-        l_left.addWidget(btn_enc);
-        l_left.addWidget(self.txt_out_enc)
-
-        w_right = QWidget()
-        r_l = QVBoxLayout(w_right)
-        r_l.addWidget(QLabel("📄 密文"))
-        self.txt_in_dec = QTextEdit()
-        self.txt_out_dec = QTextEdit();
-        self.txt_out_dec.setReadOnly(True)
-        btn_dec = QPushButton("⬇️ 解密");
-        btn_dec.clicked.connect(self.do_txt_dec)
-        r_l.addWidget(self.txt_in_dec);
-        r_l.addWidget(btn_dec);
-        r_l.addWidget(self.txt_out_dec)
-
-        splitter.addWidget(w_left)
-        splitter.addWidget(w_right)
-        layout.addWidget(splitter)
-
-        self.tabs.addTab(tab, "📝 文本工具")
-
-    # ================= [Tab 4] 日志 =================
+    # ================= [Tab 3] 日志 (含自动刷新) =================
     def _init_log_tab(self):
         tab = QWidget()
         l = QVBoxLayout(tab)
-        l.setContentsMargins(20, 40, 20, 20)  # 统一间距
-        self.log_txt = QTextEdit();
+        l.setContentsMargins(20, 30, 20, 20)
+
+        # 头部说明
+        head_l = QHBoxLayout()
+        head_l.addWidget(QLabel("📝 系统运行日志 (每秒自动刷新)"))
+        head_l.addStretch()
+
+        self.log_txt = QTextEdit()
         self.log_txt.setReadOnly(True)
-        btn = QPushButton("刷新日志");
-        btn.clicked.connect(self.load_log)
-        l.addWidget(btn);
+        self.log_txt.setStyleSheet("background: #111; color: #0f0; font-family: Consolas;")
+
+        l.addLayout(head_l)
         l.addWidget(self.log_txt)
         self.tabs.addTab(tab, "🛡️ 系统日志")
 
+        # [新功能] 启动 1秒 定时刷新
+        self.log_timer = QTimer(self)
+        self.log_timer.timeout.connect(self.load_log)
+        self.log_timer.start(1000)  # 1000ms = 1s
+
     # ================= 逻辑方法 =================
+
+    def select_out_dir(self, is_encrypt):
+        d = QFileDialog.getExistingDirectory(self, "选择输出文件夹")
+        if d:
+            if is_encrypt:
+                self.custom_enc_path = d
+                self.lbl_enc_path.setText(f"自定义: {d}")
+                self.lbl_enc_path.setStyleSheet("color: #00e5ff; font-weight: bold;")
+            else:
+                self.custom_dec_path = d
+                self.lbl_dec_path.setText(f"自定义: {d}")
+                self.lbl_dec_path.setStyleSheet("color: #00e5ff; font-weight: bold;")
+
+    def reset_out_dir(self, is_encrypt):
+        if is_encrypt:
+            self.custom_enc_path = None
+            self.lbl_enc_path.setText("默认: 源文件同级目录")
+            self.lbl_enc_path.setStyleSheet("color: #aaa; font-style: italic;")
+        else:
+            self.custom_dec_path = None
+            self.lbl_dec_path.setText("默认: 源文件同级目录")
+            self.lbl_dec_path.setStyleSheet("color: #aaa; font-style: italic;")
+
     def add_files(self, is_enc):
         if is_enc:
-            files, _ = QFileDialog.getOpenFileNames(self, "添加文件 (可多选)", "", "All Files (*)")
+            files, _ = QFileDialog.getOpenFileNames(self, "添加文件", "", "All Files (*)")
             if files: self.enc_list.addItems(files)
         else:
             files, _ = QFileDialog.getOpenFileNames(self, "添加加密文件", "", "Encrypted (*.enc)")
@@ -403,11 +411,10 @@ class MainWindow(QMainWindow):
         self.enc_pbar.setValue(0)
         self.btn_open_enc.setVisible(False)
 
-        # 传递是否强制存入项目目录的参数
         self.worker = BatchWorkerThread(
             files, key, True,
             encrypt_filename=self.chk_name.isChecked(),
-            force_project_dir=self.chk_save_proj.isChecked()
+            custom_out_dir=self.custom_enc_path
         )
         self.worker.progress.connect(lambda msg, s, t: (self.enc_status.setText(msg), self.enc_pbar.setValue(t)))
         self.worker.finished.connect(lambda res: self.on_finish(res, True))
@@ -425,7 +432,7 @@ class MainWindow(QMainWindow):
 
         self.worker = BatchWorkerThread(
             files, key, False, False,
-            force_project_dir=self.chk_dec_proj.isChecked()
+            custom_out_dir=self.custom_dec_path
         )
         self.worker.progress.connect(lambda msg, s, t: (self.dec_status.setText(msg), self.dec_pbar.setValue(t)))
         self.worker.finished.connect(lambda res: self.on_finish(res, False))
@@ -437,7 +444,6 @@ class MainWindow(QMainWindow):
         fail = len(results["fail"])
         del_count = 0
 
-        # 记录最后一个成功的文件夹以便打开
         if succ > 0:
             last_file = results["success"][-1][1]
             self.last_out_dir = os.path.dirname(last_file)
@@ -479,28 +485,34 @@ class MainWindow(QMainWindow):
         else:
             QMessageBox.information(self, "提示", "尚未生成输出文件，无法打开目录。")
 
-    def do_txt_enc(self):
-        try:
-            res = TextCipher.encrypt(self.txt_in_enc.toPlainText(), self.txt_algo.currentText(), self.txt_key.text())
-            self.txt_out_enc.setText(res)
-        except Exception as e:
-            self.txt_out_enc.setText(str(e))
-
-    def do_txt_dec(self):
-        algo = self.txt_algo.currentText()
-        if algo == "Base64":
-            import base64
-            try:
-                self.txt_out_dec.setText(base64.b64decode(self.txt_in_dec.toPlainText()).decode())
-            except:
-                self.txt_out_dec.setText("解码失败")
-        else:
-            self.txt_out_dec.setText("请在 core/text_cipher.py 实现对称解密逻辑")
-
+    # [优化版] 自动刷新日志
     def load_log(self):
         try:
-            f = sorted(os.listdir(DIRS["LOGS"]))[-1]
-            with open(os.path.join(DIRS["LOGS"], f), 'r', encoding='utf-8-sig') as file:
-                self.log_txt.setText(file.read())
-        except:
+            log_dir = DIRS["LOGS"]
+            if not os.path.exists(log_dir): return
+
+            files = sorted(os.listdir(log_dir))
+            if not files: return
+
+            target_log = os.path.join(log_dir, files[-1])
+            with open(target_log, 'r', encoding='utf-8-sig') as f:
+                content = f.read()
+
+            # [关键] 防抖：只有内容变了才刷新界面
+            if content == self.log_txt.toPlainText():
+                return
+
+            # [关键] 保持滚动条位置
+            scrollbar = self.log_txt.verticalScrollBar()
+            was_at_bottom = scrollbar.value() == scrollbar.maximum()
+
+            self.log_txt.setText(content)
+
+            # 如果之前在底部，刷新后继续保持底部；否则保持当前阅读位置
+            if was_at_bottom:
+                scrollbar.setValue(scrollbar.maximum())
+            else:
+                scrollbar.setValue(min(scrollbar.value(), scrollbar.maximum()))
+
+        except Exception:
             pass

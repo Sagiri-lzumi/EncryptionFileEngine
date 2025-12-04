@@ -29,9 +29,9 @@
 ## 📸 界面预览 (Screenshots)
 
 
-| 启动动画 | 批量加密 |
-| :---: | :---: |
-| ![Splash](https://via.placeholder.com/400x250?text=Splash+Screen) | ![Main UI](https://via.placeholder.com/400x250?text=Encryption+Tab) |
+|           启动动画           |            批量加密            |
+|:------------------------:|:--------------------------:|
+| ![Splash](./PNG/img.png) | ![Main UI](/PNG/img_1.png) |
 
 ## 🛠️ 安装与运行 (Installation)
 

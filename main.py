@@ -4,7 +4,6 @@ from PySide6.QtCore import QThread
 from config import init_directories
 from ui.splash import IntroScreen
 from ui.main_window import MainWindow
-#first second third
 
 def main():
     init_directories()

@@ -1,68 +1,45 @@
 import os
 import time
+import threading
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QTabWidget, QPushButton, QLabel, QFileDialog,
                                QGroupBox, QTextEdit, QLineEdit, QProgressBar,
                                QMessageBox, QListWidget, QCheckBox, QAbstractItemView,
-                               QSplitter, QFrame, QGridLayout, QComboBox)
+                               QSplitter, QFrame, QGridLayout, QComboBox, QStackedWidget)
 from PySide6.QtCore import QThread, Signal, QTimer, QUrl, Qt
-# [回归] 引入拖拽事件
 from PySide6.QtGui import QDesktopServices, QFont, QColor, QDragEnterEvent, QDropEvent
 from config import DIRS, CHUNK_SIZES
 from core.file_cipher import FileCipherEngine
 from core.logger import sys_logger
 
 
-# =========================================================
-# [回归功能] 支持拖拽文件的自定义列表控件
-# =========================================================
+# ================= 拖拽列表 =================
 class DragDropListWidget(QListWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setAcceptDrops(True)  # 开启拖拽接收
+        self.setAcceptDrops(True)
         self.setDragDropMode(QAbstractItemView.DropOnly)
         self.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        # 样式优化
-        self.setStyleSheet("""
-            QListWidget {
-                background: #252526; border: 1px solid #3e3e42; color: #fff; 
-                border-radius: 4px; padding: 5px;
-            }
-            QListWidget::item:selected { background: #007acc; }
-        """)
+        self.setStyleSheet("background: #252526; border: 1px solid #444; color: #fff; border-radius: 4px;")
 
-    def dragEnterEvent(self, event: QDragEnterEvent):
-        if event.mimeData().hasUrls():
-            event.acceptProposedAction()
-        else:
-            event.ignore()
+    def dragEnterEvent(self, e):
+        e.acceptProposedAction() if e.mimeData().hasUrls() else None
 
-    def dragMoveEvent(self, event):
-        if event.mimeData().hasUrls():
-            event.acceptProposedAction()
+    def dragMoveEvent(self, e):
+        e.acceptProposedAction() if e.mimeData().hasUrls() else None
 
-    def dropEvent(self, event: QDropEvent):
-        if event.mimeData().hasUrls():
-            event.setDropAction(Qt.CopyAction)
-            event.accept()
-            links = []
-            for url in event.mimeData().urls():
-                file_path = url.toLocalFile()
-                if os.path.isfile(file_path):  # 只接受文件
-                    links.append(file_path)
-            self.addItems(links)
-        else:
-            event.ignore()
+    def dropEvent(self, e):
+        if e.mimeData().hasUrls():
+            e.accept()
+            for url in e.mimeData().urls():
+                f = url.toLocalFile()
+                if os.path.isfile(f): self.addItem(f)
 
 
-# =========================================================
-# 批量工作线程 (进度算法修正 + 日志增强)
-# =========================================================
+# ================= 核心工作线程 (支持暂停/停止) =================
 class BatchWorkerThread(QThread):
-    # 信号: [状态栏文本, 当前文件进度, 全局进度]
-    progress = Signal(str, int, int)
+    progress = Signal(str, int, int)  # Msg, FilePct, TotalPct
     finished = Signal(dict)
-    # [回归] 实时日志信号
     log_update = Signal(str)
 
     def __init__(self, files, key, is_encrypt, encrypt_filename=False, custom_out_dir=None):
@@ -72,7 +49,29 @@ class BatchWorkerThread(QThread):
         self.is_enc = is_encrypt
         self.enc_name = encrypt_filename
         self.custom_out = custom_out_dir
-        self.running = True
+
+        # 控制信号
+        self._pause_event = threading.Event()
+        self._pause_event.set()  # True = 运行, False = 暂停
+        self._stop_flag = False
+
+    # 引擎回调接口
+    def is_stop_requested(self):
+        return self._stop_flag
+
+    def wait_if_paused(self):
+        self._pause_event.wait()
+
+    # 外部控制接口
+    def pause(self):
+        self._pause_event.clear()
+
+    def resume(self):
+        self._pause_event.set()
+
+    def stop(self):
+        self._stop_flag = True
+        self._pause_event.set()  # 必须唤醒才能停止
 
     def run(self):
         engine = FileCipherEngine()
@@ -80,24 +79,22 @@ class BatchWorkerThread(QThread):
         key_bytes = hashlib.sha256(self.k.encode()).digest()
 
         results = {"success": [], "fail": []}
-        total_files = len(self.files)
+        total = len(self.files)
         action_str = "加密" if self.is_enc else "解密"
 
-        # [日志] 开始记录
-        start_msg = f"--- 开始批量{action_str}任务 (共 {total_files} 个文件) ---"
-        self.log_update.emit(start_msg)
-        sys_logger.log(start_msg)
+        self.log_update.emit(f"--- 任务开始: {action_str} {total} 个文件 ---")
 
         for idx, f_path in enumerate(self.files):
-            if not self.running: break
+            if self._stop_flag: break
+
             fname = os.path.basename(f_path)
             start_t = time.time()
 
-            # 全局进度基数
-            global_base_pct = (idx / total_files) * 100
-            self.progress.emit(f"正在处理 [{idx + 1}/{total_files}]: {fname}", 0, int(global_base_pct))
+            # 全局基准进度
+            global_base = (idx / total) * 100
+            self.progress.emit(f"正在处理 [{idx + 1}/{total}]: {fname}", 0, int(global_base))
 
-            # 回调函数 (包含智能防抖)
+            # 实时进度回调
             last_p = -1
 
             def cb(curr, tot):
@@ -107,76 +104,79 @@ class BatchWorkerThread(QThread):
                 else:
                     p = int((curr / tot) * 100)
 
+                # 降低刷新频率防卡顿
                 if p > last_p:
                     last_p = p
-                    current_global = int(((idx + (p / 100.0)) / total_files) * 100)
-                    self.progress.emit(f"正在处理 [{idx + 1}/{total_files}]: {fname} ({p}%)", p, current_global)
+                    # 计算平滑的全局进度
+                    cur_global = int(((idx + (p / 100.0)) / total) * 100)
+                    self.progress.emit(f"处理中 [{idx + 1}/{total}]: {fname} ({p}%)", p, cur_global)
 
-            # 路径逻辑
+            # 路径
             if self.custom_out and os.path.exists(self.custom_out):
                 out_dir = self.custom_out
             else:
                 out_dir = os.path.dirname(f_path)
 
-            # 执行核心逻辑
+            # 执行 (传入 self 作为 controller)
             suc, msg, out_path = engine.process_file(
-                f_path, out_dir, key_bytes, self.is_enc, self.enc_name, cb
+                f_path, out_dir, key_bytes, self.is_enc, self.enc_name, cb, controller=self
             )
 
-            duration = (time.time() - start_t) * 1000  # ms
+            duration = (time.time() - start_t) * 1000
 
             if suc:
                 results["success"].append((f_path, out_path))
-                # [回归] 详细日志记录
-                out_name = os.path.basename(out_path)
-                log_detail = f"[{action_str}成功] {fname} -> {out_name} (耗时: {int(duration)}ms)"
-                self.log_update.emit(log_detail)
-                sys_logger.log(log_detail)
+                log_msg = f"[{action_str}成功] {fname} -> {os.path.basename(out_path)} ({int(duration)}ms)"
+                self.log_update.emit(log_msg)
+                sys_logger.log(log_msg)
             else:
-                results["fail"].append((f_path, msg))
-                log_fail = f"[{action_str}失败] {fname} | 原因: {msg}"
-                self.log_update.emit(log_fail)
-                sys_logger.log(log_fail, "error")
+                if msg == "用户停止":
+                    self.log_update.emit(f"⚠️ {fname} 处理被中止")
+                else:
+                    results["fail"].append((f_path, msg))
+                    self.log_update.emit(f"❌ {fname}: {msg}")
+                    sys_logger.log(f"失败 {fname}: {msg}", "error")
 
-        self.progress.emit("任务队列完成", 100, 100)
+        if self._stop_flag:
+            self.progress.emit("任务已停止", 0, 0)
+        else:
+            self.progress.emit("任务完成", 100, 100)
+
         self.finished.emit(results)
-
-    def stop(self):
-        self.running = False
 
 
 # ================= 主界面 =================
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Encryption Studio v7.2 (Full Features)")
+        self.setWindowTitle("Encryption Studio v8.0 (Full Control)")
         self.resize(1100, 780)
-        self.setMinimumSize(950, 650)
+        self.setMinimumSize(980, 680)
         self._apply_theme()
 
         container = QWidget()
         self.setCentralWidget(container)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
 
-        # 1. 顶部状态条
+        # 顶部
         top_bar = QFrame()
         top_bar.setStyleSheet("background: #252526; border-bottom: 1px solid #333;")
-        top_bar.setMinimumHeight(50)
-        top_l = QHBoxLayout(top_bar)
-        top_l.addWidget(QLabel("  🛡️ 安全核心: 活跃"))
-        top_l.addStretch()
+        top_bar.setFixedHeight(50)
+        tl = QHBoxLayout(top_bar)
+        tl.addWidget(QLabel("  🛡️ 安全核心: 活跃"))
+        tl.addStretch()
         layout.addWidget(top_bar)
 
-        # 2. 内容 Tab
+        # Tabs
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs)
 
-        # 状态变量
+        # 变量
         self.custom_enc_path = None
         self.custom_dec_path = None
         self.last_out_dir = ""
+        self.is_paused = False
 
         self._init_encrypt_tab()
         self._init_decrypt_tab()
@@ -185,410 +185,406 @@ class MainWindow(QMainWindow):
     def _apply_theme(self):
         self.setStyleSheet("""
             QMainWindow { background-color: #1e1e1e; color: #ccc; }
-            QWidget { font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif; font-size: 13px; color: #e0e0e0; }
+            QWidget { font-family: 'Microsoft YaHei UI'; font-size: 10pt; color: #e0e0e0; }
 
-            QTabWidget::pane { border: none; background: #1e1e1e; }
-            QTabBar::tab { background: #2d2d30; color: #888; padding: 12px 25px; margin-right: 2px; }
-            QTabBar::tab:selected { background: #1e1e1e; color: #007acc; border-top: 3px solid #007acc; }
+            QTabWidget::pane { border: none; }
+            QTabBar::tab { background: #2d2d30; color: #999; padding: 10px 25px; margin-right: 2px; }
+            QTabBar::tab:selected { background: #1e1e1e; color: #007acc; border-top: 3px solid #007acc; font-weight: bold; }
 
-            QGroupBox { 
-                border: 1px solid #444; 
-                border-radius: 6px; 
-                margin-top: 25px; 
-                font-weight: bold; 
-                font-size: 14px;
-            }
-            QGroupBox::title { 
-                subcontrol-origin: margin; 
-                subcontrol-position: top left;
-                left: 15px; 
-                top: 0px; 
-                padding: 0 5px; 
-                background-color: #1e1e1e; 
-                color: #007acc; 
-            }
+            QGroupBox { border: 1px solid #444; border-radius: 6px; margin-top: 25px; font-weight: bold; }
+            QGroupBox::title { subcontrol-origin: margin; left: 15px; top: 0px; padding: 0 5px; background-color: #1e1e1e; color: #007acc; }
 
-            QLineEdit { background: #252526; border: 1px solid #3e3e42; color: #fff; border-radius: 4px; padding: 5px; }
+            QListWidget, QLineEdit { background: #252526; border: 1px solid #3e3e42; border-radius: 4px; padding: 6px; }
+            QListWidget::item:selected { background: #007acc; }
 
-            QPushButton { background: #3e3e42; color: #fff; border: 1px solid #555; padding: 8px 16px; border-radius: 4px; }
+            QPushButton { background: #3e3e42; color: #fff; border: 1px solid #555; padding: 6px 15px; border-radius: 4px; }
             QPushButton:hover { background: #505055; border-color: #007acc; }
-            QPushButton#ActionBtn { background: #007acc; border: none; font-weight: bold; font-size: 14px; padding: 12px; }
-            QPushButton#ActionBtn:hover { background: #0062a3; }
-            QPushButton#SmallBtn { padding: 4px 10px; font-size: 12px; }
 
-            QProgressBar { border: none; background: #2d2d30; height: 8px; border-radius: 4px; }
-            QProgressBar::chunk { background: #007acc; border-radius: 4px; }
+            QPushButton#StartBtn { background: #007acc; border: none; font-weight: bold; font-size: 12pt; }
+            QPushButton#StartBtn:hover { background: #0062a3; }
+
+            QPushButton#PauseBtn { background: #f09000; border: none; font-weight: bold; }
+            QPushButton#PauseBtn:hover { background: #c67600; }
+
+            QPushButton#StopBtn { background: #d32f2f; border: none; font-weight: bold; }
+            QPushButton#StopBtn:hover { background: #b71c1c; }
+
+            QProgressBar { border: none; background: #2d2d30; height: 10px; border-radius: 5px; text-align: center; }
+            QProgressBar::chunk { background: #007acc; border-radius: 5px; }
         """)
 
-    # ================= [Tab 1] 加密 =================
+    # ================= 加密页 =================
     def _init_encrypt_tab(self):
         tab = QWidget()
         layout = QHBoxLayout(tab)
         layout.setContentsMargins(20, 30, 20, 20)
 
-        # --- 左侧 ---
-        left_grp = QGroupBox("1. 文件队列 (支持拖拽)")
+        # 左侧
+        left_grp = QGroupBox("1. 文件队列")
         l_left = QVBoxLayout(left_grp)
         l_left.setContentsMargins(15, 25, 15, 15)
+        l_left.addWidget(QLabel("💡 支持拖拽 / 多选"))
 
-        lbl_hint = QLabel("💡 提示：点击“添加文件”或将文件拖入下方区域。")
-        lbl_hint.setStyleSheet("color: #888; margin-bottom: 5px;")
-        l_left.addWidget(lbl_hint)
-
-        # [回归] 使用 DragDropListWidget
         self.enc_list = DragDropListWidget()
+        btn_l = QHBoxLayout()
+        b_add = QPushButton("➕ 添加");
+        b_add.clicked.connect(lambda: self.add_files(True))
+        b_del = QPushButton("➖ 移除");
+        b_del.clicked.connect(lambda: self.remove_sel(self.enc_list))
+        b_clr = QPushButton("🗑️ 清空");
+        b_clr.clicked.connect(self.enc_list.clear)
+        btn_l.addWidget(b_add);
+        btn_l.addWidget(b_del);
+        btn_l.addWidget(b_clr)
+        l_left.addWidget(self.enc_list);
+        l_left.addLayout(btn_l)
 
-        btn_layout = QHBoxLayout()
-        btn_add = QPushButton("➕ 添加文件");
-        btn_add.clicked.connect(lambda: self.add_files(True))
-        btn_rem = QPushButton("➖ 移除选中");
-        btn_rem.clicked.connect(lambda: self.remove_sel(self.enc_list))
-        btn_clr = QPushButton("🗑️ 清空队列");
-        btn_clr.clicked.connect(self.enc_list.clear)
-        btn_layout.addWidget(btn_add)
-        btn_layout.addWidget(btn_rem)
-        btn_layout.addWidget(btn_clr)
-
-        l_left.addWidget(self.enc_list)
-        l_left.addLayout(btn_layout)
-
-        # --- 右侧 ---
-        right_grp = QGroupBox("2. 加密配置")
-        right_grp.setFixedWidth(380)
+        # 右侧
+        right_grp = QGroupBox("2. 配置与控制")
+        right_grp.setFixedWidth(400)
         l_right = QVBoxLayout(right_grp)
         l_right.setContentsMargins(20, 25, 20, 20)
 
-        l_right.addWidget(QLabel("设置密码:"))
-        self.enc_pwd = QLineEdit()
-        self.enc_pwd.setPlaceholderText("在此输入密码...")
-        self.enc_pwd.setEchoMode(QLineEdit.Password)
+        # 配置区 (容器，用于整体禁用)
+        self.enc_cfg_area = QWidget()
+        cfg_l = QVBoxLayout(self.enc_cfg_area)
+        cfg_l.setContentsMargins(0, 0, 0, 0)
+
+        cfg_l.addWidget(QLabel("设置密码:"))
+        self.enc_pwd = QLineEdit();
+        self.enc_pwd.setEchoMode(QLineEdit.Password);
         self.enc_pwd.setMinimumHeight(35)
-        l_right.addWidget(self.enc_pwd)
+        cfg_l.addWidget(self.enc_pwd)
+        cfg_l.addSpacing(15)
 
-        l_right.addSpacing(20)
-
-        # 输出路径
-        l_right.addWidget(QLabel("输出位置:"))
-        path_layout = QHBoxLayout()
-        self.lbl_enc_path = QLineEdit("默认: 源文件同级目录")
+        cfg_l.addWidget(QLabel("输出位置:"))
+        path_l = QHBoxLayout()
+        self.lbl_enc_path = QLineEdit("默认: 源文件位置");
         self.lbl_enc_path.setReadOnly(True)
-        self.lbl_enc_path.setStyleSheet("color: #aaa; font-style: italic;")
+        b_sel = QPushButton("选择");
+        b_sel.clicked.connect(lambda: self.select_out_dir(True))
+        b_rst = QPushButton("重置");
+        b_rst.clicked.connect(lambda: self.reset_out_dir(True))
+        path_l.addWidget(self.lbl_enc_path);
+        path_l.addWidget(b_sel);
+        path_l.addWidget(b_rst)
+        cfg_l.addLayout(path_l)
 
-        btn_sel_path = QPushButton("📂 选择")
-        btn_sel_path.setObjectName("SmallBtn")
-        btn_sel_path.clicked.connect(lambda: self.select_out_dir(True))
-
-        btn_rst_path = QPushButton("↺ 重置")
-        btn_rst_path.setObjectName("SmallBtn")
-        btn_rst_path.setToolTip("恢复为默认源文件目录")
-        btn_rst_path.clicked.connect(lambda: self.reset_out_dir(True))
-
-        path_layout.addWidget(self.lbl_enc_path)
-        path_layout.addWidget(btn_sel_path)
-        path_layout.addWidget(btn_rst_path)
-        l_right.addLayout(path_layout)
-
-        l_right.addSpacing(15)
-
-        self.chk_name = QCheckBox("🔏 混淆文件名 (防破解)")
+        cfg_l.addSpacing(10)
+        self.chk_name = QCheckBox("🔏 混淆文件名");
         self.chk_name.setChecked(True)
-        l_right.addWidget(self.chk_name)
+        self.chk_del = QCheckBox("⚠️ 完成后删除源文件")
+        cfg_l.addWidget(self.chk_name);
+        cfg_l.addWidget(self.chk_del)
 
-        self.chk_del = QCheckBox("⚠️ 完成后物理删除源文件")
-        self.chk_del.setStyleSheet("color: #ff6b6b; font-weight: bold;")
-        self.chk_del.setChecked(False)
-        l_right.addWidget(self.chk_del)
-
+        l_right.addWidget(self.enc_cfg_area)
         l_right.addStretch()
 
+        # 状态区
         self.enc_status = QLabel("等待任务...")
         self.enc_pbar = QProgressBar()
-
-        self.btn_enc_run = QPushButton("🚀 开始加密")
-        self.btn_enc_run.setObjectName("ActionBtn")
-        self.btn_enc_run.setMinimumHeight(50)
-        self.btn_enc_run.clicked.connect(self.run_encrypt)
-
-        self.btn_open_enc = QPushButton("📂 打开输出文件夹")
-        self.btn_open_enc.setVisible(False)
-        self.btn_open_enc.setMinimumHeight(40)
-        self.btn_open_enc.clicked.connect(self.open_last_folder)
-
-        l_right.addWidget(self.enc_status)
+        l_right.addWidget(self.enc_status);
         l_right.addWidget(self.enc_pbar)
         l_right.addSpacing(15)
-        l_right.addWidget(self.btn_enc_run)
-        l_right.addWidget(self.btn_open_enc)
 
-        layout.addWidget(left_grp)
-        layout.addWidget(right_grp)
+        # 按钮切换逻辑：使用 StackedWidget 实现 "开始" 与 "暂停/停止" 的切换
+        self.enc_btn_stack = QStackedWidget()
+
+        # Page 0: 开始按钮
+        self.btn_enc_run = QPushButton("🚀 开始加密")
+        self.btn_enc_run.setObjectName("StartBtn")
+        self.btn_enc_run.setMinimumHeight(50)
+        self.btn_enc_run.clicked.connect(self.run_encrypt)
+        self.enc_btn_stack.addWidget(self.btn_enc_run)
+
+        # Page 1: 控制按钮组
+        ctrl_widget = QWidget()
+        ctrl_l = QHBoxLayout(ctrl_widget)
+        ctrl_l.setContentsMargins(0, 0, 0, 0)
+        self.btn_enc_pause = QPushButton("⏸️ 暂停")
+        self.btn_enc_pause.setObjectName("PauseBtn")
+        self.btn_enc_pause.setMinimumHeight(50)
+        self.btn_enc_pause.clicked.connect(self.toggle_pause)
+
+        self.btn_enc_stop = QPushButton("⏹️ 停止")
+        self.btn_enc_stop.setObjectName("StopBtn")
+        self.btn_enc_stop.setMinimumHeight(50)
+        self.btn_enc_stop.clicked.connect(self.stop_task)
+
+        ctrl_l.addWidget(self.btn_enc_pause)
+        ctrl_l.addWidget(self.btn_enc_stop)
+        self.enc_btn_stack.addWidget(ctrl_widget)
+
+        # Page 2: 打开文件夹 (完成后显示)
+        self.btn_enc_open = QPushButton("📂 打开输出文件夹")
+        self.btn_enc_open.setMinimumHeight(50)
+        self.btn_enc_open.clicked.connect(self.open_last_folder)
+        self.enc_btn_stack.addWidget(self.btn_enc_open)
+
+        l_right.addWidget(self.enc_btn_stack)
+
+        layout.addWidget(left_grp, 6);
+        layout.addWidget(right_grp, 4)
         self.tabs.addTab(tab, "🔒 加密工作台")
 
-    # ================= [Tab 2] 解密 =================
+    # ================= 解密页 =================
     def _init_decrypt_tab(self):
         tab = QWidget()
         layout = QHBoxLayout(tab)
         layout.setContentsMargins(20, 30, 20, 20)
 
-        # 左侧
-        left_grp = QGroupBox("1. 加密文件队列 (支持拖拽)")
+        left_grp = QGroupBox("1. 文件队列")
         l_left = QVBoxLayout(left_grp)
         l_left.setContentsMargins(15, 25, 15, 15)
-
-        # [回归] 使用 DragDropListWidget
         self.dec_list = DragDropListWidget()
 
-        btn_layout = QHBoxLayout()
-        btn_add = QPushButton("➕ 添加文件");
-        btn_add.clicked.connect(lambda: self.add_files(False))
-        btn_rem = QPushButton("➖ 移除选中");
-        btn_rem.clicked.connect(lambda: self.remove_sel(self.dec_list))
-        btn_clr = QPushButton("🗑️ 清空队列");
-        btn_clr.clicked.connect(self.dec_list.clear)
-        btn_layout.addWidget(btn_add);
-        btn_layout.addWidget(btn_rem);
-        btn_layout.addWidget(btn_clr)
+        btn_l = QHBoxLayout()
+        b_add = QPushButton("➕ 添加");
+        b_add.clicked.connect(lambda: self.add_files(False))
+        b_del = QPushButton("➖ 移除");
+        b_del.clicked.connect(lambda: self.remove_sel(self.dec_list))
+        b_clr = QPushButton("🗑️ 清空");
+        b_clr.clicked.connect(self.dec_list.clear)
+        btn_l.addWidget(b_add);
+        btn_l.addWidget(b_del);
+        btn_l.addWidget(b_clr)
         l_left.addWidget(self.dec_list);
-        l_left.addLayout(btn_layout)
+        l_left.addLayout(btn_l)
 
-        # 右侧
         right_grp = QGroupBox("2. 解密配置")
-        right_grp.setFixedWidth(380)
+        right_grp.setFixedWidth(400)
         l_right = QVBoxLayout(right_grp)
         l_right.setContentsMargins(20, 25, 20, 20)
 
-        l_right.addWidget(QLabel("解密密码:"))
+        # 配置区
+        self.dec_cfg_area = QWidget()
+        cfg_l = QVBoxLayout(self.dec_cfg_area)
+        cfg_l.setContentsMargins(0, 0, 0, 0)
+
+        cfg_l.addWidget(QLabel("解密密码:"))
         self.dec_pwd = QLineEdit();
-        self.dec_pwd.setEchoMode(QLineEdit.Password)
+        self.dec_pwd.setEchoMode(QLineEdit.Password);
         self.dec_pwd.setMinimumHeight(35)
-        l_right.addWidget(self.dec_pwd)
+        cfg_l.addWidget(self.dec_pwd)
+        cfg_l.addSpacing(15)
 
-        l_right.addSpacing(20)
-
-        # 路径选择
-        l_right.addWidget(QLabel("输出位置:"))
-        path_layout = QHBoxLayout()
-        self.lbl_dec_path = QLineEdit("默认: 源文件同级目录")
+        cfg_l.addWidget(QLabel("输出位置:"))
+        path_l = QHBoxLayout()
+        self.lbl_dec_path = QLineEdit("默认: 源文件位置");
         self.lbl_dec_path.setReadOnly(True)
-        self.lbl_dec_path.setStyleSheet("color: #aaa; font-style: italic;")
+        b_sel = QPushButton("选择");
+        b_sel.clicked.connect(lambda: self.select_out_dir(False))
+        b_rst = QPushButton("重置");
+        b_rst.clicked.connect(lambda: self.reset_out_dir(False))
+        path_l.addWidget(self.lbl_dec_path);
+        path_l.addWidget(b_sel);
+        path_l.addWidget(b_rst)
+        cfg_l.addLayout(path_l)
 
-        btn_sel_path = QPushButton("📂 选择")
-        btn_sel_path.setObjectName("SmallBtn")
-        btn_sel_path.clicked.connect(lambda: self.select_out_dir(False))
-
-        btn_rst_path = QPushButton("↺ 重置")
-        btn_rst_path.setObjectName("SmallBtn")
-        btn_rst_path.clicked.connect(lambda: self.reset_out_dir(False))
-
-        path_layout.addWidget(self.lbl_dec_path)
-        path_layout.addWidget(btn_sel_path)
-        path_layout.addWidget(btn_rst_path)
-        l_right.addLayout(path_layout)
-
-        l_right.addSpacing(15)
-
-        self.chk_dec_del = QCheckBox("⚠️ 解密后清理加密包 (.enc)")
-        self.chk_dec_del.setChecked(False)
-        self.chk_dec_del.setMinimumHeight(25)
-        l_right.addWidget(self.chk_dec_del)
-
+        cfg_l.addSpacing(10)
+        self.chk_dec_del = QCheckBox("⚠️ 解密后清理加密包")
+        cfg_l.addWidget(self.chk_dec_del)
+        l_right.addWidget(self.dec_cfg_area)
         l_right.addStretch()
 
         self.dec_status = QLabel("等待任务...")
         self.dec_pbar = QProgressBar()
-
-        self.btn_dec_run = QPushButton("🔓 开始解密")
-        self.btn_dec_run.setObjectName("ActionBtn")
-        self.btn_dec_run.setStyleSheet("background-color: #2e7d32; border: none;")
-        self.btn_dec_run.setMinimumHeight(50)
-        self.btn_dec_run.clicked.connect(self.run_decrypt)
-
-        self.btn_open_dec = QPushButton("📂 打开输出文件夹")
-        self.btn_open_dec.setVisible(False)
-        self.btn_open_dec.setMinimumHeight(40)
-        self.btn_open_dec.clicked.connect(self.open_last_folder)
-
-        l_right.addWidget(self.dec_status)
+        l_right.addWidget(self.dec_status);
         l_right.addWidget(self.dec_pbar)
         l_right.addSpacing(15)
-        l_right.addWidget(self.btn_dec_run)
-        l_right.addWidget(self.btn_open_dec)
 
-        layout.addWidget(left_grp)
-        layout.addWidget(right_grp)
+        # 按钮栈
+        self.dec_btn_stack = QStackedWidget()
+
+        self.btn_dec_run = QPushButton("🔓 开始解密")
+        self.btn_dec_run.setObjectName("StartBtn")
+        self.btn_dec_run.setMinimumHeight(50)
+        self.btn_dec_run.setStyleSheet("background: #2e7d32;")
+        self.btn_dec_run.clicked.connect(self.run_decrypt)
+        self.dec_btn_stack.addWidget(self.btn_dec_run)
+
+        ctrl_widget = QWidget()
+        ctrl_l = QHBoxLayout(ctrl_widget);
+        ctrl_l.setContentsMargins(0, 0, 0, 0)
+        self.btn_dec_pause = QPushButton("⏸️ 暂停")
+        self.btn_dec_pause.setObjectName("PauseBtn");
+        self.btn_dec_pause.setMinimumHeight(50)
+        self.btn_dec_pause.clicked.connect(self.toggle_pause)
+        self.btn_dec_stop = QPushButton("⏹️ 停止")
+        self.btn_dec_stop.setObjectName("StopBtn");
+        self.btn_dec_stop.setMinimumHeight(50)
+        self.btn_dec_stop.clicked.connect(self.stop_task)
+        ctrl_l.addWidget(self.btn_dec_pause);
+        ctrl_l.addWidget(self.btn_dec_stop)
+        self.dec_btn_stack.addWidget(ctrl_widget)
+
+        self.btn_dec_open = QPushButton("📂 打开输出文件夹")
+        self.btn_dec_open.setMinimumHeight(50)
+        self.btn_dec_open.clicked.connect(self.open_last_folder)
+        self.dec_btn_stack.addWidget(self.btn_dec_open)
+
+        l_right.addWidget(self.dec_btn_stack)
+
+        layout.addWidget(left_grp, 6);
+        layout.addWidget(right_grp, 4)
         self.tabs.addTab(tab, "🔓 解密工作台")
 
-    # ================= [Tab 3] 日志 =================
+    # ================= 日志页 =================
     def _init_log_tab(self):
         tab = QWidget()
         l = QVBoxLayout(tab)
         l.setContentsMargins(20, 30, 20, 20)
 
-        head = QHBoxLayout()
-        head.addWidget(QLabel("📝 实时操作日志 (自动刷新)"))
-        head.addStretch()
-
-        self.log_txt = QTextEdit()
+        self.log_txt = QTextEdit();
         self.log_txt.setReadOnly(True)
-        # 深色日志风格
         self.log_txt.setStyleSheet(
-            "background: #1e1e1e; border: 1px solid #444; color: #9cdcfe; font-family: Consolas;")
-
-        l.addLayout(head)
+            "background: #1e1e1e; border: 1px solid #444; color: #00ff00; font-family: Consolas;")
+        l.addWidget(QLabel("📝 实时日志 (每秒自动刷新)"))
         l.addWidget(self.log_txt)
-        self.tabs.addTab(tab, "🛡️ 系统日志")
+        self.tabs.addTab(tab, "日志")
 
-        # 兜底定时刷新
         self.log_timer = QTimer(self)
         self.log_timer.timeout.connect(self.load_log)
-        self.log_timer.start(2000)  # 每2秒检查一次文件变化
+        self.log_timer.start(1000)
 
-    # ================= 逻辑方法 =================
-
-    def select_out_dir(self, is_encrypt):
-        d = QFileDialog.getExistingDirectory(self, "选择输出文件夹")
-        if d:
-            if is_encrypt:
-                self.custom_enc_path = d
-                self.lbl_enc_path.setText(f"自定义: {d}")
-                self.lbl_enc_path.setStyleSheet("color: #00e5ff; font-weight: bold;")
-            else:
-                self.custom_dec_path = d
-                self.lbl_dec_path.setText(f"自定义: {d}")
-                self.lbl_dec_path.setStyleSheet("color: #00e5ff; font-weight: bold;")
-
-    def reset_out_dir(self, is_encrypt):
-        if is_encrypt:
-            self.custom_enc_path = None
-            self.lbl_enc_path.setText("默认: 源文件同级目录")
-            self.lbl_enc_path.setStyleSheet("color: #aaa; font-style: italic;")
-        else:
-            self.custom_dec_path = None
-            self.lbl_dec_path.setText("默认: 源文件同级目录")
-            self.lbl_dec_path.setStyleSheet("color: #aaa; font-style: italic;")
-
-    def add_files(self, is_enc):
-        if is_enc:
-            files, _ = QFileDialog.getOpenFileNames(self, "添加文件 (可多选)", "", "All Files (*)")
-            if files: self.enc_list.addItems(files)
-        else:
-            files, _ = QFileDialog.getOpenFileNames(self, "添加加密文件", "", "Encrypted (*.enc)")
-            if files: self.dec_list.addItems(files)
-
-    def remove_sel(self, list_w):
-        for item in list_w.selectedItems():
-            list_w.takeItem(list_w.row(item))
-
+    # ================= 逻辑 =================
     def run_encrypt(self):
-        files = [self.enc_list.item(i).text() for i in range(self.enc_list.count())]
-        key = self.enc_pwd.text()
-
-        if not files: return QMessageBox.warning(self, "提示", "请先添加文件")
-        if not key: return QMessageBox.warning(self, "提示", "请输入密码")
-
-        self.toggle_ui(False)
-        self.enc_pbar.setValue(0)
-        self.btn_open_enc.setVisible(False)
-
-        self.worker = BatchWorkerThread(
-            files, key, True,
-            encrypt_filename=self.chk_name.isChecked(),
-            custom_out_dir=self.custom_enc_path
-        )
-        self.worker.progress.connect(lambda msg, s, t: (self.enc_status.setText(msg), self.enc_pbar.setValue(t)))
-        # [回归] 实时日志连接
-        self.worker.log_update.connect(self.append_log_immediate)
-        self.worker.finished.connect(lambda res: self.on_finish(res, True))
-        self.worker.start()
+        self._start_task(True)
 
     def run_decrypt(self):
-        files = [self.dec_list.item(i).text() for i in range(self.dec_list.count())]
-        key = self.dec_pwd.text()
+        self._start_task(False)
 
-        if not files or not key: return QMessageBox.warning(self, "提示", "请添加文件并输入密码")
+    def _start_task(self, is_encrypt):
+        lst = self.enc_list if is_encrypt else self.dec_list
+        pwd = self.enc_pwd if is_encrypt else self.dec_pwd
+        files = [lst.item(i).text() for i in range(lst.count())]
+        key = pwd.text()
 
-        self.toggle_ui(False)
-        self.dec_pbar.setValue(0)
-        self.btn_open_dec.setVisible(False)
+        if not files or not key: return QMessageBox.warning(self, "警告", "请检查文件和密码")
+
+        # 切换 UI 状态
+        self.set_ui_processing(True, is_encrypt)
+
+        path = self.custom_enc_path if is_encrypt else self.custom_dec_path
 
         self.worker = BatchWorkerThread(
-            files, key, False, False,
-            custom_out_dir=self.custom_dec_path
+            files, key, is_encrypt,
+            encrypt_filename=self.chk_name.isChecked() if is_encrypt else False,
+            custom_out_dir=path
         )
-        self.worker.progress.connect(lambda msg, s, t: (self.dec_status.setText(msg), self.dec_pbar.setValue(t)))
-        # [回归] 实时日志连接
-        self.worker.log_update.connect(self.append_log_immediate)
-        self.worker.finished.connect(lambda res: self.on_finish(res, False))
+
+        lbl = self.enc_status if is_encrypt else self.dec_status
+        pbar = self.enc_pbar if is_encrypt else self.dec_pbar
+
+        self.worker.progress.connect(lambda m, s, t: (lbl.setText(m), pbar.setValue(t)))
+        self.worker.log_update.connect(self.append_log)
+        self.worker.finished.connect(lambda res: self.on_finish(res, is_encrypt))
         self.worker.start()
 
-    def on_finish(self, results, is_enc):
-        self.toggle_ui(True)
-        succ = len(results["success"])
-        fail = len(results["fail"])
-        del_count = 0
+    def set_ui_processing(self, processing, is_encrypt):
+        # 禁用配置区
+        cfg = self.enc_cfg_area if is_encrypt else self.dec_cfg_area
+        cfg.setEnabled(not processing)
+
+        # 切换按钮栈: 0=开始, 1=控制, 2=打开
+        stack = self.enc_btn_stack if is_encrypt else self.dec_btn_stack
+        stack.setCurrentIndex(1 if processing else 0)
+
+        # 重置暂停按钮
+        self.is_paused = False
+        btn_p = self.btn_enc_pause if is_encrypt else self.btn_dec_pause
+        btn_p.setText("⏸️ 暂停")
+        btn_p.setStyleSheet("background: #f09000;")
+
+    def toggle_pause(self):
+        if not self.worker: return
+        is_enc = (self.tabs.currentIndex() == 0)
+        btn = self.btn_enc_pause if is_enc else self.btn_dec_pause
+
+        if self.is_paused:
+            self.worker.resume()
+            self.is_paused = False
+            btn.setText("⏸️ 暂停")
+            btn.setStyleSheet("background: #f09000;")
+        else:
+            self.worker.pause()
+            self.is_paused = True
+            btn.setText("▶️ 继续")
+            btn.setStyleSheet("background: #23a559;")
+
+    def stop_task(self):
+        if self.worker:
+            if self.is_paused: self.worker.resume()
+            self.worker.stop()
+
+    def on_finish(self, res, is_enc):
+        # 切换到"打开文件夹"按钮
+        stack = self.enc_btn_stack if is_enc else self.dec_btn_stack
+        stack.setCurrentIndex(2)
+
+        # 恢复配置区
+        cfg = self.enc_cfg_area if is_enc else self.dec_cfg_area
+        cfg.setEnabled(True)
+
+        succ = len(res["success"])
+        fail = len(res["fail"])
 
         if succ > 0:
-            last_file = results["success"][-1][1]
-            self.last_out_dir = os.path.dirname(last_file)
+            self.last_out_dir = os.path.dirname(res["success"][-1][1])
 
-        if is_enc and self.chk_del.isChecked():
-            for src, _ in results["success"]:
+        del_chk = self.chk_del if is_enc else self.chk_dec_del
+        if del_chk.isChecked():
+            for src, _ in res["success"]:
                 try:
-                    os.remove(src); del_count += 1
-                except:
-                    pass
-        elif not is_enc and self.chk_dec_del.isChecked():
-            for src, _ in results["success"]:
-                try:
-                    os.remove(src); del_count += 1
+                    os.remove(src)
                 except:
                     pass
 
-        msg = f"成功: {succ} 个\n失败: {fail} 个"
-        if del_count > 0: msg += f"\n已物理删除源文件: {del_count} 个"
+        QMessageBox.information(self, "完成", f"成功: {succ}\n失败: {fail}")
 
+    # 辅助函数
+    def append_log(self, msg):
+        self.log_txt.append(f"[{time.strftime('%H:%M:%S')}] {msg}")
+        self.log_txt.verticalScrollBar().setValue(self.log_txt.verticalScrollBar().maximum())
+
+    def load_log(self):
+        try:
+            f = sorted(os.listdir(DIRS["LOGS"]))[-1]
+            with open(os.path.join(DIRS["LOGS"], f), 'r', encoding='utf-8-sig') as file:
+                c = file.read()
+            if c != self.log_txt.toPlainText():
+                sb = self.log_txt.verticalScrollBar()
+                bot = sb.value() == sb.maximum()
+                self.log_txt.setText(c)
+                if bot: sb.setValue(sb.maximum())
+        except:
+            pass
+
+    def select_out_dir(self, is_enc):
+        d = QFileDialog.getExistingDirectory(self, "选择文件夹")
+        if d:
+            if is_enc:
+                self.custom_enc_path = d; self.lbl_enc_path.setText(d)
+            else:
+                self.custom_dec_path = d; self.lbl_dec_path.setText(d)
+
+    def reset_out_dir(self, is_enc):
         if is_enc:
-            self.enc_list.clear()
-            self.btn_open_enc.setVisible(True)
-            self.enc_status.setText("任务完成")
+            self.custom_enc_path = None; self.lbl_enc_path.setText("默认: 源文件位置")
         else:
-            self.dec_list.clear()
-            self.btn_open_dec.setVisible(True)
-            self.dec_status.setText("任务完成")
+            self.custom_dec_path = None; self.lbl_dec_path.setText("默认: 源文件位置")
 
-        QMessageBox.information(self, "结果报告", msg)
+    def add_files(self, is_enc):
+        flter = "All Files (*)" if is_enc else "Encrypted (*.enc)"
+        files, _ = QFileDialog.getOpenFileNames(self, "选择文件", "", flter)
+        t = self.enc_list if is_enc else self.dec_list
+        if files: t.addItems(files)
 
-    def toggle_ui(self, enable):
-        self.tabs.setEnabled(enable)
+    def remove_sel(self, t):
+        for i in t.selectedItems(): t.takeItem(t.row(i))
 
     def open_last_folder(self):
         if self.last_out_dir and os.path.exists(self.last_out_dir):
             QDesktopServices.openUrl(QUrl.fromLocalFile(self.last_out_dir))
         else:
-            QMessageBox.information(self, "提示", "尚未生成输出文件，无法打开目录。")
-
-    # [回归] 实时追加日志
-    def append_log_immediate(self, msg):
-        self.log_txt.append(f"[{time.strftime('%H:%M:%S')}] {msg}")
-        self.log_txt.verticalScrollBar().setValue(self.log_txt.verticalScrollBar().maximum())
-
-    # 定时器读取文件 (用于捕获非实时日志或手动修改)
-    def load_log(self):
-        try:
-            f = sorted(os.listdir(DIRS["LOGS"]))[-1]
-            with open(os.path.join(DIRS["LOGS"], f), 'r', encoding='utf-8-sig') as file:
-                content = file.read()
-
-            if content == self.log_txt.toPlainText(): return
-
-            sb = self.log_txt.verticalScrollBar()
-            was_at_bottom = sb.value() == sb.maximum()
-
-            self.log_txt.setText(content)
-
-            if was_at_bottom:
-                sb.setValue(sb.maximum())
-            else:
-                sb.setValue(min(sb.value(), sb.maximum()))
-        except:
-            pass
+            QMessageBox.information(self, "提示", "尚未生成输出文件")

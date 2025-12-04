@@ -18,6 +18,8 @@ DecryptedFile/*
 OriginalFile/*
 Logs/*
 
+dist/*
+
 # 保留文件夹本身 (通过保留一个空文件)
 !EncryptedFile/.gitkeep
 !DecryptedFile/.gitkeep

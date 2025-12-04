@@ -1,0 +1,28 @@
+# Python 编译文件
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 虚拟环境
+venv/
+env/
+.venv/
+
+# IDE 配置 (Pycharm / VSCode)
+.idea/
+.vscode/
+
+# 项目生成的文件夹 (不应上传实际的数据文件)
+EncryptedFile/*
+DecryptedFile/*
+OriginalFile/*
+Logs/*
+
+# 保留文件夹本身 (通过保留一个空文件)
+!EncryptedFile/.gitkeep
+!DecryptedFile/.gitkeep
+!OriginalFile/.gitkeep
+!Logs/.gitkeep
+
+# 秘钥文件
+Keys/*

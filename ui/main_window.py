@@ -149,7 +149,7 @@ class BatchWorkerThread(QThread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Encryption Studio v8.0 (Full Control)")
+        self.setWindowTitle("Encryption Studio")
         self.resize(1100, 780)
         self.setMinimumSize(980, 680)
         self._apply_theme()
@@ -164,7 +164,7 @@ class MainWindow(QMainWindow):
         top_bar.setStyleSheet("background: #252526; border-bottom: 1px solid #333;")
         top_bar.setFixedHeight(50)
         tl = QHBoxLayout(top_bar)
-        tl.addWidget(QLabel("  🛡️ 安全核心: 活跃"))
+        tl.addWidget(QLabel("  🛡️ 安全核心: 正常工作"))
         tl.addStretch()
         layout.addWidget(top_bar)
 

@@ -1,0 +1,13 @@
+2025-12-02 18:30:18,482 - WARNING - 用户 sa 登录失败
+2025-12-02 18:32:11,767 - INFO - 用户 admin 登录成功
+2025-12-02 18:34:08,488 - INFO - 用户 admin 登录成功
+2025-12-02 18:34:19,981 - INFO - 执行文本操作: DES
+2025-12-02 18:34:42,972 - INFO - 导入文件: C:\EncryptionFileEngine\OriginalFile\snip-0597aa17-aad0-46ed-bc2a-f71ca6c8df33.docx
+2025-12-02 18:34:53,479 - INFO - 开始任务: 加密 -> snip-0597aa17-aad0-46ed-bc2a-f71ca6c8df33.docx
+2025-12-02 18:34:54,844 - INFO - 任务成功完成
+2025-12-02 18:39:31,917 - INFO - 用户 admin 登录成功
+2025-12-02 18:40:25,037 - INFO - 开始加密: 旋翼飞行机械臂固定时间滑模控制_刘宜成.pdf
+2025-12-02 18:40:26,115 - INFO - 加密成功: C:\EncryptionFileEngine\EncryptedFile\旋翼飞行机械臂固定时间滑模控制_刘宜成.pdf.enc
+2025-12-02 18:40:45,404 - INFO - 开始解密: 旋翼飞行机械臂固定时间滑模控制_刘宜成.pdf.enc
+2025-12-02 18:40:46,381 - INFO - 解密成功: C:\EncryptionFileEngine\DecryptedFile\旋翼飞行机械臂固定时间滑模控制_刘宜成.pdf
+2025-12-02 18:42:21,928 - INFO - 用户 admin 登录成功

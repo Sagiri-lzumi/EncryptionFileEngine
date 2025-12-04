@@ -18,7 +18,6 @@ def main():
         QThread.msleep(20)
         app.processEvents()
 
-    # 直接进主界面 (无鉴权)
     window = MainWindow()
     window.show()
     splash.finish(window)

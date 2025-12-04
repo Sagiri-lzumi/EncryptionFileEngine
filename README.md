@@ -28,7 +28,6 @@
 
 ## 📸 界面预览 (Screenshots)
 
-*(此处建议你上传截图后替换链接，例如：启动页、批量加密页、文本工具页)*
 
 | 启动动画 | 批量加密 |
 | :---: | :---: |
@@ -38,8 +37,3 @@
 
 ### 环境要求
 * Python 3.8 或更高版本
-
-### 1. 克隆项目
-```bash
-git clone [https://github.com/你的用户名/Encryption-Studio.git](https://github.com/你的用户名/Encryption-Studio.git)
-cd Encryption-Studio

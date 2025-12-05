@@ -18,7 +18,7 @@ try:
     from core.file_cipher import FileCipherEngine
     from core.logger import sys_logger
 except ImportError:
-    # 模拟环境：防止因缺少文件导致无法运行 UI
+    # 模拟环境
     DIRS = {"LOGS": "logs"}
     if not os.path.exists("logs"): os.makedirs("logs")
 
@@ -27,7 +27,7 @@ except ImportError:
         @staticmethod
         def log(msg, level="info"): print(f"[Log] {msg}")
 
-# ================= 样式表 (商务深色/浅色) =================
+# ================= 样式表 (已修改进度条颜色) =================
 
 DARK_THEME = """
 QMainWindow, QWidget { background-color: #1e1e1e; color: #d4d4d4; font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 10pt; }
@@ -44,8 +44,16 @@ QPushButton[class="primary"] { background-color: #007acc; border: 1px solid #007
 QPushButton[class="primary"]:hover { background-color: #1c97ea; border-color: #1c97ea; }
 QPushButton[class="danger"] { background-color: #c50500; border: 1px solid #c50500; }
 QPushButton[class="danger"]:hover { background-color: #f00; border-color: #f00; }
-/* 进度条 */
-QProgressBar { border: 1px solid #3e3e42; background-color: #2d2d30; height: 16px; border-radius: 2px; text-align: center; }
+/* 进度条 - 文字改为亮紫色 #E040FB，加粗防止看不清 */
+QProgressBar { 
+    border: 1px solid #3e3e42; 
+    background-color: #2d2d30; 
+    height: 16px; 
+    border-radius: 2px; 
+    text-align: center; 
+    color: #E040FB; 
+    font-weight: bold;
+}
 QProgressBar::chunk { background-color: #007acc; width: 10px; margin: 0.5px; }
 QTabWidget::pane { border: none; }
 QTabBar::tab { background: #2d2d30; color: #888; padding: 8px 25px; border-top: 2px solid transparent; }
@@ -66,8 +74,16 @@ QPushButton[class="primary"] { background-color: #005a9e; color: white; border: 
 QPushButton[class="primary"]:hover { background-color: #004578; border-color: #004578; }
 QPushButton[class="danger"] { background-color: #d13438; color: white; border: 1px solid #d13438; }
 QPushButton[class="danger"]:hover { background-color: #a4262c; border-color: #a4262c; }
-/* 进度条 */
-QProgressBar { border: 1px solid #c0c0c0; background-color: #e0e0e0; height: 16px; border-radius: 2px; text-align: center; }
+/* 进度条 - 文字改为深紫色 #800080，加粗防止看不清 */
+QProgressBar { 
+    border: 1px solid #c0c0c0; 
+    background-color: #e0e0e0; 
+    height: 16px; 
+    border-radius: 2px; 
+    text-align: center; 
+    color: #800080; 
+    font-weight: bold;
+}
 QProgressBar::chunk { background-color: #005a9e; width: 10px; margin: 0.5px; }
 QTabWidget::pane { border: none; }
 QTabBar::tab { background: #e0e0e0; color: #666; padding: 8px 25px; border-top: 2px solid transparent; }
@@ -82,7 +98,7 @@ class DragDropListWidget(QListWidget):
         self.setAcceptDrops(True)
         self.setDragDropMode(QAbstractItemView.DropOnly)
         self.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.theme_mode = "dark"  # 用于控制绘制颜色
+        self.theme_mode = "dark"
 
     def dragEnterEvent(self, e):
         e.acceptProposedAction() if e.mimeData().hasUrls() else None
@@ -120,7 +136,7 @@ class DragDropListWidget(QListWidget):
             painter.restore()
 
 
-# ================= 工作线程 =================
+# ================= 核心：工作线程 (带节流阀的平滑进度) =================
 class BatchWorkerThread(QThread):
     # 信号定义
     sig_progress = Signal(str, int)  # 文本, 百分比
@@ -135,17 +151,13 @@ class BatchWorkerThread(QThread):
         self.enc_name = encrypt_filename
         self.custom_out = custom_out_dir
 
-        # 线程控制
         self._pause_event = threading.Event()
         self._pause_event.set()
         self._stop_flag = False
 
-        # 进度追踪
         self.total_bytes = 0
-        self.file_progress_map = {}  # {filepath: processed_bytes}
+        self.file_progress_map = {}
         self.progress_lock = threading.Lock()
-
-        # [优化] 节流阀：控制 UI 刷新频率，防止界面卡死
         self.last_emit_time = 0
 
     def is_stop_requested(self):
@@ -164,24 +176,19 @@ class BatchWorkerThread(QThread):
         self._stop_flag = True
         self._pause_event.set()
 
-    # 回调函数：由 FileCipherEngine 在子线程中调用
     def _engine_callback(self, file_path, current_processed, file_total):
         if self._stop_flag: return
 
         with self.progress_lock:
-            # 更新该文件的进度
             self.file_progress_map[file_path] = current_processed
-
-            # 汇总所有文件的进度
             total_processed = sum(self.file_progress_map.values())
 
-            # 计算总百分比
             if self.total_bytes > 0:
                 pct = int((total_processed / self.total_bytes) * 100)
             else:
                 pct = 0
 
-        # [关键修复] 节流控制：每 100ms (0.1s) 最多刷新一次，或者当任务完成时强制刷新
+        # 节流控制：每 100ms 刷新一次
         current_time = time.time()
         if current_time - self.last_emit_time > 0.1 or pct == 100:
             self.sig_progress.emit(f"正在处理: {os.path.basename(file_path)}", pct)
@@ -190,10 +197,8 @@ class BatchWorkerThread(QThread):
     def run(self):
         engine = FileCipherEngine()
         key_bytes = hashlib.sha256(self.key.encode()).digest()
-
         results = {"success": [], "fail": []}
 
-        # 1. 预扫描：计算总任务大小
         self.sig_log.emit("--- 系统正在计算任务队列 ---")
         self.total_bytes = 0
         self.file_progress_map = {}
@@ -215,7 +220,6 @@ class BatchWorkerThread(QThread):
         self.sig_log.emit(
             f"启动任务: {action_str} {len(valid_files)} 个文件, 总数据量 {self.total_bytes / 1024 / 1024:.2f} MB")
 
-        # 2. 线程池并发处理
         max_workers = min(os.cpu_count() or 4, 4)
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -242,7 +246,6 @@ class BatchWorkerThread(QThread):
                 )
                 future_to_file[future] = f_path
 
-            # 3. 获取结果
             for future in as_completed(future_to_file):
                 f_path = future_to_file[future]
                 fname = os.path.basename(f_path)
@@ -272,21 +275,20 @@ class BatchWorkerThread(QThread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("文件加密解密系统")
+        self.setWindowTitle("File Security Engine Enterprise")
         self.resize(1080, 750)
         self.setMinimumSize(950, 650)
 
-        # 状态
-        self.is_dark = False  # [修改] 默认为白天模式
+        # [修改] 默认为白天模式 (False)
+        self.is_dark = False
         self.custom_enc_path = None
         self.custom_dec_path = None
         self.last_out_dir = ""
         self.is_paused = False
         self.worker = None
 
-        # UI 初始化
         self._init_ui()
-        self.apply_theme()  # 默认主题
+        self.apply_theme()
 
     def _init_ui(self):
         container = QWidget()
@@ -301,7 +303,7 @@ class MainWindow(QMainWindow):
         hl = QHBoxLayout(self.top_bar)
         hl.setContentsMargins(20, 0, 20, 0)
 
-        self.lbl_title = QLabel("内核：就绪")
+        self.lbl_title = QLabel("安全加密引擎内核 | 系统就绪")
         self.lbl_title.setStyleSheet("font-weight: bold; font-size: 11pt; color: #007acc;")
         hl.addWidget(self.lbl_title)
         hl.addStretch()
@@ -322,13 +324,11 @@ class MainWindow(QMainWindow):
         self._init_tab_log()
 
     def _create_common_layout(self, is_encrypt):
-        """生成加密/解密通用的布局结构"""
         page = QWidget()
         h_layout = QHBoxLayout(page)
         h_layout.setContentsMargins(25, 25, 25, 25)
         h_layout.setSpacing(25)
 
-        # 左侧：文件列表
         grp_left = QGroupBox("文件处理队列")
         v_left = QVBoxLayout(grp_left)
 
@@ -350,13 +350,11 @@ class MainWindow(QMainWindow):
         v_left.addWidget(file_list)
         v_left.addLayout(btn_bar)
 
-        # 右侧：设置与控制
-        grp_right = QGroupBox("密码与配置")
+        grp_right = QGroupBox("执行参数配置")
         grp_right.setFixedWidth(400)
         v_right = QVBoxLayout(grp_right)
         v_right.setSpacing(18)
 
-        # 密码
         v_right.addWidget(QLabel("安全密钥:"))
         txt_pwd = QLineEdit()
         txt_pwd.setEchoMode(QLineEdit.Password)
@@ -364,7 +362,6 @@ class MainWindow(QMainWindow):
         txt_pwd.setMinimumHeight(38)
         v_right.addWidget(txt_pwd)
 
-        # 输出目录
         v_right.addWidget(QLabel("输出路径:"))
         h_path = QHBoxLayout()
         txt_path = QLineEdit("默认: 源文件所在目录")
@@ -376,7 +373,6 @@ class MainWindow(QMainWindow):
         h_path.addWidget(btn_path)
         v_right.addLayout(h_path)
 
-        # 高级选项
         chk_name = None
         chk_del = None
         if is_encrypt:
@@ -391,7 +387,6 @@ class MainWindow(QMainWindow):
 
         v_right.addStretch()
 
-        # 状态显示
         lbl_status = QLabel("等待指令")
         lbl_status.setAlignment(Qt.AlignCenter)
         lbl_status.setStyleSheet("color: #888; font-weight: bold;")
@@ -403,22 +398,19 @@ class MainWindow(QMainWindow):
         v_right.addWidget(pbar)
         v_right.addSpacing(15)
 
-        # 按钮栈
         stack = QStackedWidget()
 
-        # 页面1: 开始按钮
         w_start = QWidget()
         l_start = QVBoxLayout(w_start)
         l_start.setContentsMargins(0, 0, 0, 0)
         btn_run = QPushButton(f"执行{'加密' if is_encrypt else '解密'}程序")
-        btn_run.setProperty("class", "primary")  # 应用样式
+        btn_run.setProperty("class", "primary")
         btn_run.setMinimumHeight(48)
         btn_run.setFont(self.font())
         btn_run.clicked.connect(self.run_encrypt if is_encrypt else self.run_decrypt)
         l_start.addWidget(btn_run)
         stack.addWidget(w_start)
 
-        # 页面2: 暂停/停止
         w_ctrl = QWidget()
         l_ctrl = QHBoxLayout(w_ctrl)
         l_ctrl.setContentsMargins(0, 0, 0, 0)
@@ -437,7 +429,6 @@ class MainWindow(QMainWindow):
         l_ctrl.addWidget(btn_stop)
         stack.addWidget(w_ctrl)
 
-        # 页面3: 结果操作
         w_res = QWidget()
         l_res = QHBoxLayout(w_res)
         l_res.setContentsMargins(0, 0, 0, 0)
@@ -471,12 +462,12 @@ class MainWindow(QMainWindow):
     def _init_tab_encrypt(self):
         page, refs = self._create_common_layout(True)
         self.ui_enc = refs
-        self.tabs.addTab(page, "加密工作台")
+        self.tabs.addTab(page, "加密终端")
 
     def _init_tab_decrypt(self):
         page, refs = self._create_common_layout(False)
         self.ui_dec = refs
-        self.tabs.addTab(page, "解密工作台")
+        self.tabs.addTab(page, "解密终端")
 
     def _init_tab_log(self):
         page = QWidget()
@@ -492,26 +483,21 @@ class MainWindow(QMainWindow):
         vl.addWidget(grp)
         self.tabs.addTab(page, "日志审计")
 
-    # ================= 逻辑功能 =================
-
     def toggle_theme(self):
         self.is_dark = not self.is_dark
         self.apply_theme()
 
     def apply_theme(self):
-        # 1. 设置主样式表
         self.setStyleSheet(DARK_THEME if self.is_dark else LIGHT_THEME)
 
-        # 2. 手动调整不支持 CSS 的组件颜色 (TopBar)
         bg = "#252526" if self.is_dark else "#f0f0f0"
         border = "#3e3e42" if self.is_dark else "#c0c0c0"
         self.top_bar.setStyleSheet(f"background-color: {bg}; border-bottom: 1px solid {border};")
 
-        # 3. 更新列表组件的绘图属性并强制重绘
         self.ui_enc["list"].theme_mode = "dark" if self.is_dark else "light"
         self.ui_dec["list"].theme_mode = "dark" if self.is_dark else "light"
 
-        # [关键修复] 使用 viewport().update() 修复崩溃问题
+        # [关键] 修复崩溃问题
         self.ui_enc["list"].viewport().update()
         self.ui_dec["list"].viewport().update()
 
@@ -557,7 +543,6 @@ class MainWindow(QMainWindow):
     def _start_process(self, is_encrypt):
         ui = self.ui_enc if is_encrypt else self.ui_dec
 
-        # 1. 验证
         count = ui["list"].count()
         if count == 0:
             return QMessageBox.warning(self, "操作提示", "任务队列为空，请先添加文件。")
@@ -568,14 +553,12 @@ class MainWindow(QMainWindow):
         files = [ui["list"].item(i).text() for i in range(count)]
         path = self.custom_enc_path if is_encrypt else self.custom_dec_path
 
-        # 2. UI 锁定
         ui["list"].setEnabled(False)
         ui["pwd"].setEnabled(False)
-        ui["stack"].setCurrentIndex(1)  # 切换到暂停/停止
+        ui["stack"].setCurrentIndex(1)
         ui["pbar"].setValue(0)
         ui["status"].setText("正在初始化加密引擎...")
 
-        # 3. 启动线程
         self.is_paused = False
         self.worker = BatchWorkerThread(
             files,
@@ -602,6 +585,9 @@ class MainWindow(QMainWindow):
         color = "#a0a0a0" if self.is_dark else "#666"
         self.txt_log.append(f"<span style='color:{color}'>[{t}]</span> {text}")
 
+        # [新增] 同步写入到日志文件
+        sys_logger.log(text)
+
     def action_toggle_pause(self):
         if not self.worker: return
         is_enc = (self.tabs.currentIndex() == 0)
@@ -626,18 +612,16 @@ class MainWindow(QMainWindow):
 
     def on_finished(self, results, is_encrypt):
         ui = self.ui_enc if is_encrypt else self.ui_dec
-        ui["stack"].setCurrentIndex(2)  # 切换到完成页
+        ui["stack"].setCurrentIndex(2)
         ui["list"].setEnabled(True)
         ui["pwd"].setEnabled(True)
 
         # [新增] 任务完成后自动清空文件队列
         ui["list"].clear()
 
-        # 记录最后目录方便打开
         if results["success"]:
             self.last_out_dir = os.path.dirname(results["success"][0][1])
 
-        # 处理删除源文件逻辑
         chk_del = ui["chk_del"]
         if chk_del.isChecked():
             self.append_log("正在执行安全删除...")

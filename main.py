@@ -1,3 +1,4 @@
+#mian.py
 import sys
 import multiprocessing
 from PySide6.QtWidgets import QApplication
@@ -20,7 +21,7 @@ def main():
     # 1秒 极速启动
     for i in range(1, 51):
         splash.update_progress(i * 2, "LOADING KERNEL..." if i < 25 else "STARTING UI...")
-        QThread.msleep(20)
+        QThread.msleep(10)
         app.processEvents()
 
     window = MainWindow()

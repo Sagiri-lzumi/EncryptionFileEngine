@@ -9,15 +9,14 @@ from cryptography.hazmat.primitives import padding
 class FileCipherEngine:
 
     def _get_smart_chunk_size(self, file_size):
-        # 增大缓冲区以提升 IO 性能
+        # 针对大文件优化缓冲区，减少 I/O 次数
         if file_size < 100 * 1024 * 1024:
-            return 1 * 1024 * 1024  # <100MB 用 1MB
+            return 1 * 1024 * 1024  # <100MB: 1MB
         elif file_size < 2 * 1024 * 1024 * 1024:
-            return 10 * 1024 * 1024  # <2GB 用 10MB
+            return 10 * 1024 * 1024  # <2GB: 10MB
         else:
-            return 64 * 1024 * 1024  # >2GB 用 64MB (减少切换开销)
+            return 64 * 1024 * 1024  # >2GB: 64MB (极大提升大文件速度)
 
-    # [核心修复] 增加 controller 参数，用于接收 Pause/Stop 指令
     def process_file(self, file_path, output_dir, key_bytes, is_encrypt, encrypt_filename=False, callback=None,
                      controller=None):
         try:
@@ -35,7 +34,7 @@ class FileCipherEngine:
 
                 original_filename = os.path.basename(file_path)
 
-                # 加密文件名
+                # 文件名加密
                 name_enc = Cipher(algorithms.AES(key_bytes), modes.CBC(iv), backend=default_backend()).encryptor()
                 name_pad = padding.PKCS7(128).padder()
                 fname_bytes = original_filename.encode('utf-8')
@@ -57,10 +56,10 @@ class FileCipherEngine:
 
                         processed = 0
                         while True:
-                            # [控制点] 检查暂停/停止
+                            # [关键] 检查暂停/停止
                             if controller:
                                 if controller.is_stop_requested(): raise InterruptedError("STOP")
-                                controller.wait_if_paused()  # 阻塞在这里实现暂停
+                                controller.wait_if_paused()  # 暂停卡点
 
                             chunk = f_in.read(chunk_size)
                             if not chunk:
@@ -71,6 +70,7 @@ class FileCipherEngine:
                             f_out.write(encryptor.update(padder_content.update(chunk)))
 
                             processed += len(chunk)
+                            # [关键] 实时回调
                             if callback: callback(processed, file_size)
 
                     return True, "加密成功", output_path
@@ -78,7 +78,7 @@ class FileCipherEngine:
                 except InterruptedError:
                     if os.path.exists(output_path):
                         try:
-                            os.remove(output_path)  # 清理半成品
+                            os.remove(output_path)
                         except:
                             pass
                     return False, "用户停止", ""
@@ -88,6 +88,7 @@ class FileCipherEngine:
                 try:
                     with open(file_path, 'rb') as f_in:
                         iv = f_in.read(16)
+                        if len(iv) < 16: return False, "文件头损坏", ""
                         name_len = struct.unpack('>I', f_in.read(4))[0]
                         enc_fname = f_in.read(name_len)
 
@@ -107,14 +108,14 @@ class FileCipherEngine:
                         decryptor = cipher.decryptor()
                         unpadder_content = padding.PKCS7(128).unpadder()
 
-                        # 计算实际内容大小用于进度条
                         header_size = 16 + 4 + name_len + 8
-                        actual_size = os.path.getsize(file_path) - header_size
                         processed = 0
+                        # 估算实际内容大小
+                        total_bytes = os.path.getsize(file_path) - header_size
+                        if total_bytes <= 0: total_bytes = 1
 
                         with open(output_path, 'wb') as f_out:
                             while True:
-                                # [控制点]
                                 if controller:
                                     if controller.is_stop_requested(): raise InterruptedError("STOP")
                                     controller.wait_if_paused()
@@ -127,7 +128,7 @@ class FileCipherEngine:
 
                                 f_out.write(unpadder_content.update(decryptor.update(chunk)))
                                 processed += len(chunk)
-                                if callback: callback(processed, actual_size)
+                                if callback: callback(processed, total_bytes)
 
                     return True, "解密成功", output_path
 

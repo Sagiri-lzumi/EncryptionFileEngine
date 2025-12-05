@@ -15,7 +15,7 @@ class FileCipherEngine:
         elif file_size < 2 * 1024 * 1024 * 1024:
             return 10 * 1024 * 1024  # <2GB: 10MB
         else:
-            return 64 * 1024 * 1024  # >2GB: 64MB (极大提升大文件速度)
+            return 64 * 1024 * 1024  # >2GB: 64MB
 
     def process_file(self, file_path, output_dir, key_bytes, is_encrypt, encrypt_filename=False, callback=None,
                      controller=None):

@@ -18,7 +18,6 @@ def main():
     splash = IntroScreen()
     splash.show()
 
-    # 1秒 极速启动
     for i in range(1, 51):
         splash.update_progress(i * 2, "LOADING KERNEL..." if i < 25 else "STARTING UI...")
         QThread.msleep(10)

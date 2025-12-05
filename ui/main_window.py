@@ -120,7 +120,7 @@ class DragDropListWidget(QListWidget):
             painter.restore()
 
 
-# ================= 核心：工作线程 (带节流阀的平滑进度) =================
+# ================= 工作线程 =================
 class BatchWorkerThread(QThread):
     # 信号定义
     sig_progress = Signal(str, int)  # 文本, 百分比
@@ -277,7 +277,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(950, 650)
 
         # 状态
-        self.is_dark = False  # [修改] 默认为白天模式 (原为 True)
+        self.is_dark = False  # [修改] 默认为白天模式
         self.custom_enc_path = None
         self.custom_dec_path = None
         self.last_out_dir = ""
@@ -301,7 +301,7 @@ class MainWindow(QMainWindow):
         hl = QHBoxLayout(self.top_bar)
         hl.setContentsMargins(20, 0, 20, 0)
 
-        self.lbl_title = QLabel("加密内核：OK")
+        self.lbl_title = QLabel("内核：就绪")
         self.lbl_title.setStyleSheet("font-weight: bold; font-size: 11pt; color: #007acc;")
         hl.addWidget(self.lbl_title)
         hl.addStretch()

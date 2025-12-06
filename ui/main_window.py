@@ -2,8 +2,9 @@ import os
 import time
 import threading
 import hashlib
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from datetime import datetime
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QTabWidget, QPushButton, QLabel, QFileDialog,
                                QGroupBox, QTextEdit, QLineEdit, QProgressBar,
@@ -13,19 +14,13 @@ from PySide6.QtCore import QThread, Signal, Qt, QUrl, QTimer, QMutex, QObject
 from PySide6.QtGui import QDesktopServices, QPainter, QColor, QAction
 
 # ================= 导入检测 =================
-try:
-    from config import DIRS
-    from core.file_cipher import FileCipherEngine
-    from core.logger import sys_logger
-except ImportError:
-    # 模拟环境
-    DIRS = {"LOGS": "logs"}
-    if not os.path.exists("logs"): os.makedirs("logs")
+# [修改说明] 移除了 try-except 保护，直接强制导入。
+# 这样如果 core.logger 或 config 有错误，程序会直接报错提示，
+# 而不是切换到模拟模式导致日志写不进去。
+from config import DIRS
+from core.file_cipher import FileCipherEngine
+from core.logger import sys_logger
 
-
-    class sys_logger:
-        @staticmethod
-        def log(msg, level="info"): print(f"[Log] {msg}")
 
 # ================= 样式表 (已修改进度条颜色) =================
 
@@ -166,9 +161,50 @@ class DragDropListWidget(QListWidget):
             painter.restore()
 
 
+# ================= [新增] 跨进程任务包装器 (放在类外面) =================
+# 这个函数会在独立的进程中运行，不能直接访问 Qt 控件
+def task_wrapper(file_path, out_dir, key_bytes, is_enc, enc_name, queue, stop_event, pause_event):
+    from core.file_cipher import FileCipherEngine
+    import time
+
+    # 1. 定义兼容多进程的控制器
+    class MPController:
+        def is_stop_requested(self):
+            return stop_event.is_set()
+
+        def wait_if_paused(self):
+            pause_event.wait()  # 阻塞直到 set()
+
+    # 2. 定义回调，通过 Queue 发送进度回主进程
+    # 为了减少通信开销，可以做一个简单的节流
+    last_update = 0
+
+    def mp_callback(current, total):
+        nonlocal last_update
+        now = time.time()
+        # 每 0.05秒 或 完成时发送一次，减少 IPC 压力
+        if now - last_update > 0.05 or current == total:
+            queue.put(("PROGRESS", file_path, current, total))
+            last_update = now
+
+    # 3. 执行核心逻辑
+    engine = FileCipherEngine()
+    try:
+        # 开始处理
+        queue.put(("START", file_path, os.path.getsize(file_path)))
+
+        success, msg, out_path = engine.process_file(
+            file_path, out_dir, key_bytes, is_enc, enc_name,
+            callback=mp_callback,
+            controller=MPController()
+        )
+        return (file_path, success, msg, out_path)
+    except Exception as e:
+        return (file_path, False, str(e), "")
+
+
 # ================= 辅助函数：文件大小格式化 =================
 def format_size(size_bytes):
-    """将字节转换为易读格式 (KB, MB, GB)"""
     if size_bytes == 0: return "0 B"
     units = ("B", "KB", "MB", "GB", "TB")
     i = 0
@@ -178,12 +214,11 @@ def format_size(size_bytes):
     return f"{size_bytes:.2f} {units[i]}"
 
 
-# ================= 核心：工作线程 (日志升级版) =================
+# ================= 核心：工作线程 (多进程火力全开版) =================
 class BatchWorkerThread(QThread):
-    # 信号定义
-    sig_progress = Signal(str, int)  # 文本, 百分比
-    sig_log = Signal(str)  # 日志文本
-    sig_finished = Signal(dict)  # 完成信号
+    sig_progress = Signal(str, int)  # 状态栏文本, 总进度百分比
+    sig_log = Signal(str)  # 日志
+    sig_finished = Signal(dict)  # 完成
 
     def __init__(self, files, key, is_encrypt, encrypt_filename=False, custom_out_dir=None):
         super().__init__()
@@ -193,137 +228,152 @@ class BatchWorkerThread(QThread):
         self.enc_name = encrypt_filename
         self.custom_out = custom_out_dir
 
-        self._pause_event = threading.Event()
-        self._pause_event.set()
-        self._stop_flag = False
+        # 使用 Manager 来管理跨进程共享状态
+        self.manager = multiprocessing.Manager()
+        self.queue = self.manager.Queue()
+        self.stop_event = self.manager.Event()
+        self.pause_event = self.manager.Event()
+        self.pause_event.set()  # 默认非暂停状态
 
         self.total_bytes = 0
-        self.file_progress_map = {}
-        self.progress_lock = threading.Lock()
-        self.last_emit_time = 0
+        self.processed_bytes_map = {}  # 记录每个文件的已处理字节
 
-    def is_stop_requested(self):
-        return self._stop_flag
-
-    def wait_if_paused(self):
-        self._pause_event.wait()
+        self._is_running = True
 
     def pause(self):
-        self._pause_event.clear()
+        self.pause_event.clear()  # 所有子进程会在 wait() 处阻塞
 
     def resume(self):
-        self._pause_event.set()
+        self.pause_event.set()  # 唤醒所有子进程
 
     def stop(self):
-        self._stop_flag = True
-        self._pause_event.set()
-
-    def _engine_callback(self, file_path, current_processed, file_total):
-        if self._stop_flag: return
-
-        with self.progress_lock:
-            self.file_progress_map[file_path] = current_processed
-            total_processed = sum(self.file_progress_map.values())
-
-            if self.total_bytes > 0:
-                pct = int((total_processed / self.total_bytes) * 100)
-            else:
-                pct = 0
-
-        # 节流控制：每 100ms 刷新一次
-        current_time = time.time()
-        if current_time - self.last_emit_time > 0.1 or pct == 100:
-            # 进度条提示也稍微详细一点
-            fname = os.path.basename(file_path)
-            self.sig_progress.emit(f"正在处理: {fname} ({pct}%)", pct)
-            self.last_emit_time = current_time
+        self.stop_event.set()
+        self._is_running = False
 
     def run(self):
-        engine = FileCipherEngine()
         key_bytes = hashlib.sha256(self.key.encode()).digest()
         results = {"success": [], "fail": []}
 
-        self.sig_log.emit("--- 系统正在计算任务队列 ---")
-        self.total_bytes = 0
-        self.file_progress_map = {}
+        # 1. 扫描与计算总任务量
         valid_files = []
+        self.total_bytes = 0
+        self.processed_bytes_map = {}
 
-        # 预扫描
+        self.sig_log.emit("--- 正在根据 CPU 核心数分配计算资源 ---")
+
         for f in self.files:
             if os.path.exists(f):
-                size = os.path.getsize(f)
-                self.total_bytes += size
-                self.file_progress_map[f] = 0
+                s = os.path.getsize(f)
+                self.total_bytes += s
                 valid_files.append(f)
+                self.processed_bytes_map[f] = 0
             else:
                 results["fail"].append((f, "文件不存在"))
-                self.sig_log.emit(f"⚠ [跳过] 文件不存在: {f}")
 
-        if self.total_bytes == 0 and valid_files:
-            self.total_bytes = 1
+        if not valid_files:
+            self.sig_finished.emit(results)
+            return
 
-        action_str = "加密" if self.is_enc else "解密"
-        total_size_str = format_size(self.total_bytes)
+        if self.total_bytes == 0: self.total_bytes = 1
+
+        # 2. 启动多进程池
+        # os.cpu_count() 获取物理核心数，通常直接跑满
+        max_workers = os.cpu_count()
+        # 如果文件少，不要开启过多进程浪费资源
+        real_workers = min(max_workers, len(valid_files))
+
+        action = "加密" if self.is_enc else "解密"
         self.sig_log.emit(
-            f" [启动任务] 模式: {action_str} | 文件数: {len(valid_files)} | 总大小: {total_size_str}")
+            f" [多核] 启动 {real_workers} 个并行核心处理 {len(valid_files)} 个文件 (总计 {format_size(self.total_bytes)})")
 
-        max_workers = min(os.cpu_count() or 4, 4)
+        with ProcessPoolExecutor(max_workers=real_workers) as executor:
+            futures = []
 
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_file = {}
-
+            # 提交任务
             for f_path in valid_files:
-                if self._stop_flag: break
-
                 out_dir = self.custom_out if (self.custom_out and os.path.exists(self.custom_out)) else os.path.dirname(
                     f_path)
 
-                def specific_callback(p, t):
-                    self._engine_callback(f_path, p, t)
-
-                future = executor.submit(
-                    engine.process_file,
-                    f_path,
-                    out_dir,
-                    key_bytes,
-                    self.is_enc,
-                    self.enc_name,
-                    specific_callback,
-                    self
+                # 注意：传递给子进程的参数必须是可序列化的 (Picklable)
+                fut = executor.submit(
+                    task_wrapper,  # 顶层函数
+                    f_path, out_dir, key_bytes, self.is_enc, self.enc_name,
+                    self.queue, self.stop_event, self.pause_event
                 )
-                future_to_file[future] = f_path
+                futures.append(fut)
 
-            for future in as_completed(future_to_file):
-                f_path = future_to_file[future]
-                fname = os.path.basename(f_path)
+            # 3. 监听消息队列 (主线程充当监控中心)
+            # 我们不使用 as_completed 阻塞等待，而是循环检查 queue 更新 UI
+            finished_count = 0
+            total_count = len(valid_files)
 
-                # 获取文件大小用于日志显示
-                f_size_str = "未知大小"
-                if os.path.exists(f_path):
-                    f_size_str = format_size(os.path.getsize(f_path))
-
+            while finished_count < total_count and self._is_running:
+                # 尝试从队列获取消息，非阻塞或短超时
                 try:
-                    success, msg, out_path = future.result()
-                    if success:
-                        results["success"].append((f_path, out_path))
-                        # 【详细日志】 成功
-                        out_name = os.path.basename(out_path)
-                        self.sig_log.emit(f" [成功] {fname} ({f_size_str}) -> {out_name}")
-                    else:
-                        if msg == "用户停止":
-                            self.sig_log.emit(f" [中断] {fname}")
-                        else:
-                            results["fail"].append((f_path, msg))
-                            # 【详细日志】 失败
-                            self.sig_log.emit(f" [失败] {fname} ({f_size_str}) | 原因: {msg}")
-                except Exception as e:
-                    results["fail"].append((f_path, str(e)))
-                    self.sig_log.emit(f" [异常] {fname} | 错误信息: {e}")
+                    while not self.queue.empty():
+                        msg_type, *data = self.queue.get_nowait()
 
-        final_msg = " 任务已强制终止" if self._stop_flag else " 所有任务处理完成"
-        pct = 0 if self._stop_flag else 100
-        self.sig_progress.emit(final_msg, pct)
+                        if msg_type == "PROGRESS":
+                            # data: [file_path, current, total]
+                            f_path, curr, _ = data
+                            self.processed_bytes_map[f_path] = curr
+
+                        elif msg_type == "START":
+                            # data: [file_path, size]
+                            pass  # 可选：显示正在开始处理某文件
+
+                    # 计算总进度
+                    global_processed = sum(self.processed_bytes_map.values())
+                    pct = int((global_processed / self.total_bytes) * 100)
+                    self.sig_progress.emit(f"多核并行计算中... {pct}%", pct)
+
+                except:
+                    pass
+
+                # 检查任务完成情况
+                # 这里我们需要轮询 futures 的状态
+                # 为了不阻塞 UI 更新，这里稍微 sleep 一下
+                QThread.msleep(50)
+
+                # 统计已完成的 Future
+                # 注意：这种写法在任务极多时可能略有性能损耗，但在文件处理场景可接受
+                done_futures = [f for f in futures if f.done()]
+                if len(done_futures) > finished_count:
+                    # 有新任务完成了
+                    for f in done_futures:
+                        if getattr(f, '_handled', False): continue
+                        f._handled = True  # 标记已处理
+                        finished_count += 1
+
+                        try:
+                            # 获取 task_wrapper 的返回值
+                            f_path, success, msg, out_path = f.result()
+                            fname = os.path.basename(f_path)
+                            fsize = format_size(os.path.getsize(f_path)) if os.path.exists(f_path) else "?"
+
+                            if success:
+                                results["success"].append((f_path, out_path))
+                                out_name = os.path.basename(out_path)
+                                self.sig_log.emit(f" [核心完成] {fname} ({fsize}) -> {out_name}")
+                            else:
+                                if msg == "用户停止":  # 这里通常不会触发，因为直接 kill flag 了
+                                    pass
+                                else:
+                                    results["fail"].append((f_path, msg))
+                                    self.sig_log.emit(f" [失败] {fname} | {msg}")
+                        except Exception as e:
+                            self.sig_log.emit(f" [进程崩溃] {e}")
+
+            # 4. 循环结束 (完成或停止)
+            if not self._is_running:
+                # 如果是强制停止，立即终止所有子进程
+                executor.shutdown(wait=False, cancel_futures=True)
+                self.sig_log.emit(" 用户强制终止所有并行进程")
+
+        final_msg = "处理完成" if self._is_running else "任务已终止"
+        self.sig_progress.emit(final_msg, 100 if self._is_running else 0)
         self.sig_finished.emit(results)
+
 # ================= 主窗口 =================
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -628,40 +678,49 @@ class MainWindow(QMainWindow):
         self.worker.start()
 
     def update_progress(self, text, val):
-        is_enc = (self.tabs.currentIndex() == 0)
-        ui = self.ui_enc if is_enc else self.ui_dec
+        if not self.worker: return
+        # 获取 worker 正在执行的任务类型 (True=加密, False=解密)
+        is_enc_task = self.worker.is_enc
+        # 锁定目标 UI，不随用户点击选项卡而改变
+        ui = self.ui_enc if is_enc_task else self.ui_dec
         ui["status"].setText(text)
         ui["pbar"].setValue(val)
 
     def append_log(self, text):
-        t = time.strftime("%H:%M:%S")
+        # 获取当前时间，包含微秒，并截取前3位作为毫秒
+        # 格式示例: 10:30:45.123
+        t = datetime.now().strftime("%H:%M:%S.%f")[:-3]
         color = "#a0a0a0" if self.is_dark else "#666"
+        # 使用 HTML 渲染颜色，让时间戳稍微暗一点，突出日志内容
         self.txt_log.append(f"<span style='color:{color}'>[{t}]</span> {text}")
-
-        # [新增] 同步写入到日志文件
+        # 同步写入到系统日志文件
         sys_logger.log(text)
 
     def action_toggle_pause(self):
         if not self.worker: return
-        is_enc = (self.tabs.currentIndex() == 0)
-        ui = self.ui_enc if is_enc else self.ui_dec
-
+        # [修复] 同样根据 worker 的实际任务类型来决定操作哪个 UI 的按钮
+        is_enc_task = self.worker.is_enc
+        ui = self.ui_enc if is_enc_task else self.ui_dec
         if self.is_paused:
             self.worker.resume()
             self.is_paused = False
             ui["btn_pause"].setText("挂起任务")
-            ui["status"].setText("正在处理...")
+            ui["status"].setText("正在处理...")  # 恢复状态文本
         else:
             self.worker.pause()
             self.is_paused = True
             ui["btn_pause"].setText("继续任务")
-            ui["status"].setText("任务已挂起")
+            ui["status"].setText("任务已挂起 (等待继续)")
 
     def action_stop_task(self):
         if self.worker:
-            if self.is_paused: self.worker.resume()
+            # 如果处于暂停状态，先恢复再停止，避免子进程卡死
+            if self.is_paused:
+                self.worker.resume()
             self.worker.stop()
-            self.append_log("用户请求终止操作...")
+            # 记录日志
+            task_type = "加密" if self.worker.is_enc else "解密"
+            self.append_log(f" 用户请求强行终止 {task_type} 任务...")
 
     def on_finished(self, results, is_encrypt):
         ui = self.ui_enc if is_encrypt else self.ui_dec

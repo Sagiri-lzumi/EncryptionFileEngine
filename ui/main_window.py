@@ -91,7 +91,7 @@ QTabBar::tab:selected { background: #f0f0f0; color: #005a9e; border-top: 2px sol
 """
 
 
-# ================= 组件：拖拽列表 =================
+# ================= 组件：拖拽列表 (已升级文件夹递归支持) =================
 class DragDropListWidget(QListWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -101,6 +101,7 @@ class DragDropListWidget(QListWidget):
         self.theme_mode = "dark"
 
     def dragEnterEvent(self, e):
+        # 只要有文件路径就允许拖入
         e.acceptProposedAction() if e.mimeData().hasUrls() else None
 
     def dragMoveEvent(self, e):
@@ -110,13 +111,41 @@ class DragDropListWidget(QListWidget):
         if e.mimeData().hasUrls():
             e.accept()
             added = False
+
+            # 1. 获取当前列表中已存在的文件，防止重复添加
+            existing_files = set()
+            for i in range(self.count()):
+                existing_files.add(self.item(i).text())
+
+            # 2. 遍历拖入的所有对象
             for url in e.mimeData().urls():
-                f = url.toLocalFile()
-                if os.path.isfile(f):
-                    self.addItem(f)
-                    added = True
+                path = url.toLocalFile()
+
+                # 情况 A: 拖入的是单个文件
+                if os.path.isfile(path):
+                    if path not in existing_files:
+                        self.addItem(path)
+                        existing_files.add(path)  # 立即加入集合，防止同一次操作中有重复
+                        added = True
+
+                # 情况 B: 拖入的是文件夹 (新增功能)
+                elif os.path.isdir(path):
+                    # os.walk 自动递归遍历所有子文件夹
+                    for root, dirs, files in os.walk(path):
+                        for file in files:
+                            full_path = os.path.join(root, file)
+                            # 归一化路径分隔符，防止 Windows/Mac 混用导致判定失效
+                            full_path = os.path.normpath(full_path)
+
+                            if full_path not in existing_files:
+                                self.addItem(full_path)
+                                existing_files.add(full_path)
+                                added = True
+
+            # 3. 如果有新文件添加，尝试刷新 UI 状态
             if added and self.window():
                 try:
+                    # 这里的 logic 判断当前是否在加密页 (index 0)
                     self.window().reset_ui_state(self.window().tabs.currentIndex() == 0)
                 except:
                     pass
@@ -132,11 +161,24 @@ class DragDropListWidget(QListWidget):
             font = self.font()
             font.setPointSize(10)
             painter.setFont(font)
-            painter.drawText(self.viewport().rect(), Qt.AlignCenter, "请将待处理文件拖入此区域")
+            # 提示文字稍微改一下，体现支持文件夹
+            painter.drawText(self.viewport().rect(), Qt.AlignCenter, "请将文件或文件夹拖入此区域")
             painter.restore()
 
 
-# ================= 核心：工作线程 (带节流阀的平滑进度) =================
+# ================= 辅助函数：文件大小格式化 =================
+def format_size(size_bytes):
+    """将字节转换为易读格式 (KB, MB, GB)"""
+    if size_bytes == 0: return "0 B"
+    units = ("B", "KB", "MB", "GB", "TB")
+    i = 0
+    while size_bytes >= 1024 and i < len(units) - 1:
+        size_bytes /= 1024
+        i += 1
+    return f"{size_bytes:.2f} {units[i]}"
+
+
+# ================= 核心：工作线程 (日志升级版) =================
 class BatchWorkerThread(QThread):
     # 信号定义
     sig_progress = Signal(str, int)  # 文本, 百分比
@@ -191,7 +233,9 @@ class BatchWorkerThread(QThread):
         # 节流控制：每 100ms 刷新一次
         current_time = time.time()
         if current_time - self.last_emit_time > 0.1 or pct == 100:
-            self.sig_progress.emit(f"正在处理: {os.path.basename(file_path)}", pct)
+            # 进度条提示也稍微详细一点
+            fname = os.path.basename(file_path)
+            self.sig_progress.emit(f"正在处理: {fname} ({pct}%)", pct)
             self.last_emit_time = current_time
 
     def run(self):
@@ -204,6 +248,7 @@ class BatchWorkerThread(QThread):
         self.file_progress_map = {}
         valid_files = []
 
+        # 预扫描
         for f in self.files:
             if os.path.exists(f):
                 size = os.path.getsize(f)
@@ -212,13 +257,15 @@ class BatchWorkerThread(QThread):
                 valid_files.append(f)
             else:
                 results["fail"].append((f, "文件不存在"))
+                self.sig_log.emit(f"⚠ [跳过] 文件不存在: {f}")
 
         if self.total_bytes == 0 and valid_files:
             self.total_bytes = 1
 
         action_str = "加密" if self.is_enc else "解密"
+        total_size_str = format_size(self.total_bytes)
         self.sig_log.emit(
-            f"启动任务: {action_str} {len(valid_files)} 个文件, 总数据量 {self.total_bytes / 1024 / 1024:.2f} MB")
+            f" [启动任务] 模式: {action_str} | 文件数: {len(valid_files)} | 总大小: {total_size_str}")
 
         max_workers = min(os.cpu_count() or 4, 4)
 
@@ -250,27 +297,33 @@ class BatchWorkerThread(QThread):
                 f_path = future_to_file[future]
                 fname = os.path.basename(f_path)
 
+                # 获取文件大小用于日志显示
+                f_size_str = "未知大小"
+                if os.path.exists(f_path):
+                    f_size_str = format_size(os.path.getsize(f_path))
+
                 try:
                     success, msg, out_path = future.result()
                     if success:
                         results["success"].append((f_path, out_path))
-                        self.sig_log.emit(f"成功: {fname}")
+                        # 【详细日志】 成功
+                        out_name = os.path.basename(out_path)
+                        self.sig_log.emit(f" [成功] {fname} ({f_size_str}) -> {out_name}")
                     else:
                         if msg == "用户停止":
-                            self.sig_log.emit(f"中断: {fname}")
+                            self.sig_log.emit(f" [中断] {fname}")
                         else:
                             results["fail"].append((f_path, msg))
-                            self.sig_log.emit(f"错误 {fname}: {msg}")
+                            # 【详细日志】 失败
+                            self.sig_log.emit(f" [失败] {fname} ({f_size_str}) | 原因: {msg}")
                 except Exception as e:
                     results["fail"].append((f_path, str(e)))
-                    self.sig_log.emit(f"异常 {fname}: {e}")
+                    self.sig_log.emit(f" [异常] {fname} | 错误信息: {e}")
 
-        final_msg = "任务已终止" if self._stop_flag else "处理完成"
+        final_msg = " 任务已强制终止" if self._stop_flag else " 所有任务处理完成"
         pct = 0 if self._stop_flag else 100
         self.sig_progress.emit(final_msg, pct)
         self.sig_finished.emit(results)
-
-
 # ================= 主窗口 =================
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -438,7 +491,7 @@ class MainWindow(QMainWindow):
         btn_open.setMinimumHeight(48)
         btn_open.clicked.connect(self.action_open_folder)
 
-        btn_back = QPushButton("返回主界面")
+        btn_back = QPushButton("返回继续工作")
         btn_back.setMinimumHeight(48)
         btn_back.clicked.connect(lambda: self.reset_ui_state(is_encrypt))
 

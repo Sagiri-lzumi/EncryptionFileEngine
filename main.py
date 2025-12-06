@@ -1,23 +1,41 @@
-#mian.py
 import sys
+import os
+import ctypes
 import multiprocessing
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QThread
-from config import init_directories
+from PySide6.QtGui import QIcon
+
+from config import init_directories, BASE_DIR
 from ui.splash import IntroScreen
 from ui.main_window import MainWindow
-
 
 def main():
     # 1. Windows 多进程打包必须
     multiprocessing.freeze_support()
 
+    # 2. [新增] 提示 Windows 这是一个独立的应用程序
+    try:
+        myappid = 'security.fileengine.cipher.1.0'  # 任意唯一的字符串
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+    except ImportError:
+        pass
+
     init_directories()
     app = QApplication(sys.argv)
+
+    # 3. [新增] 设置全局应用图标
+    # 只要你的 fileenc.ico 在项目根目录下，这里就能加载到
+    icon_path = os.path.join(BASE_DIR, "fileenc.ico")
+    if os.path.exists(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
+    else:
+        print(f"⚠️ 未找到图标文件: {icon_path}")
 
     splash = IntroScreen()
     splash.show()
 
+    # 模拟加载过程
     for i in range(1, 51):
         splash.update_progress(i * 2, "LOADING KERNEL..." if i < 25 else "STARTING UI...")
         QThread.msleep(10)
@@ -28,7 +46,6 @@ def main():
     splash.finish(window)
 
     sys.exit(app.exec())
-
 
 if __name__ == "__main__":
     main()

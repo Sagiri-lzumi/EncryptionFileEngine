@@ -22,69 +22,290 @@ from core.file_cipher import FileCipherEngine
 from core.logger import sys_logger
 
 
-# ================= 样式表 (已修改进度条颜色) =================
+# ================= 样式表 (Apple/Telegram 现代风格) =================
 
 DARK_THEME = """
-QMainWindow, QWidget { background-color: #1e1e1e; color: #d4d4d4; font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 10pt; }
-QGroupBox { border: 1px solid #3e3e42; border-radius: 4px; margin-top: 10px; padding-top: 15px; font-weight: bold; }
-QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; color: #007acc; background-color: #1e1e1e; }
-QListWidget, QTextEdit, QLineEdit { background-color: #252526; border: 1px solid #3e3e42; border-radius: 2px; color: #d4d4d4; }
-QLineEdit:focus, QTextEdit:focus { border: 1px solid #007acc; }
-QPushButton { background-color: #3e3e42; color: #ffffff; border: 1px solid #3e3e42; padding: 6px 12px; border-radius: 2px; }
-QPushButton:hover { background-color: #505050; border-color: #007acc; }
-QPushButton:pressed { background-color: #007acc; }
-QPushButton:disabled { background-color: #2d2d30; color: #666; border-color: #2d2d30; }
-/* 强调按钮 */
-QPushButton[class="primary"] { background-color: #007acc; border: 1px solid #007acc; }
-QPushButton[class="primary"]:hover { background-color: #1c97ea; border-color: #1c97ea; }
-QPushButton[class="danger"] { background-color: #c50500; border: 1px solid #c50500; }
-QPushButton[class="danger"]:hover { background-color: #f00; border-color: #f00; }
-/* 进度条 - 文字改为亮紫色 #E040FB，加粗防止看不清 */
-QProgressBar { 
-    border: 1px solid #3e3e42; 
-    background-color: #2d2d30; 
-    height: 16px; 
-    border-radius: 2px; 
-    text-align: center; 
-    color: #E040FB; 
-    font-weight: bold;
+/* === 全局基调：Telegram 夜间蓝灰 === */
+QMainWindow, QWidget { 
+    background-color: #1c1c1e; /* Apple Dark Background */
+    color: #ffffff; 
+    font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    font-size: 10pt;
+    selection-background-color: #0a84ff;
 }
-QProgressBar::chunk { background-color: #007acc; width: 10px; margin: 0.5px; }
+
+/* === 顶部栏：毛玻璃模拟 === */
+QFrame#TopBar {
+    background-color: rgba(44, 44, 46, 0.8); /* 半透明深灰 */
+    border-bottom: 1px solid rgba(84, 84, 88, 0.6); /* 极细分割线 */
+}
+QLabel { color: #ffffff; }
+
+/* === 分组框：去边框，纯色块卡片 === */
+QGroupBox { 
+    border: none; /* 去掉边框 */
+    border-radius: 12px; 
+    margin-top: 28px; /* 留出标题空间 */
+    background-color: #2c2c2e; /* Apple Secondary System Fill */
+    padding-top: 20px;
+}
+QGroupBox::title { 
+    subcontrol-origin: margin; 
+    subcontrol-position: top left;
+    left: 10px;
+    padding: 0 5px; 
+    color: #8e8e93; /* Apple Secondary Label Color */
+    font-weight: 600;
+    font-size: 10pt;
+    background-color: transparent;
+}
+
+/* === 文件列表：iOS 风格 === */
+QListWidget { 
+    background-color: rgba(0, 0, 0, 0.2); /* 微黑背景，增加深度 */
+    border: none;
+    border-radius: 10px; 
+    outline: none; /* 去掉选中时的虚线框 */
+    padding: 5px;
+}
+QListWidget::item {
+    height: 36px;
+    padding-left: 10px;
+    border-radius: 8px;
+    margin-bottom: 2px;
+    color: #dddddd;
+}
+/* 选中状态：模仿 macOS 高亮 */
+QListWidget::item:selected {
+    background-color: #0a84ff; /* iOS Blue */
+    color: #ffffff;
+}
+QListWidget::item:hover:!selected {
+    background-color: rgba(255, 255, 255, 0.08); /* 微弱白光 */
+}
+
+/* === 输入框：扁平化 === */
+QLineEdit, QTextEdit { 
+    background-color: rgba(0, 0, 0, 0.2); 
+    border: 1px solid transparent; 
+    border-radius: 8px; 
+    color: #ffffff; 
+    padding: 8px 10px;
+}
+QLineEdit:focus, QTextEdit:focus { 
+    background-color: rgba(0, 0, 0, 0.4);
+    border: 1px solid #0a84ff; /* 聚焦时才显示蓝色边框 */
+}
+
+/* === 普通按钮：幽灵按钮 (Ghost Button) === */
+QPushButton { 
+    background-color: rgba(255, 255, 255, 0.08); /* 只有微弱的底色 */
+    color: #ffffff; 
+    border: none; 
+    padding: 8px 16px; 
+    border-radius: 8px; 
+    font-weight: 500;
+}
+QPushButton:hover { 
+    background-color: rgba(255, 255, 255, 0.15); /* 悬停变亮 */
+}
+QPushButton:pressed { 
+    background-color: rgba(255, 255, 255, 0.05); 
+}
+
+/* === 核心按钮：iOS 纯蓝 === */
+QPushButton[class="primary"] { 
+    background-color: #0a84ff; 
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 11pt;
+}
+QPushButton[class="primary"]:hover { 
+    background-color: #0077ed; /* 稍深一点 */
+}
+QPushButton[class="primary"]:pressed { 
+    background-color: #006edb; 
+}
+
+/* === 危险按钮：iOS 纯红 === */
+QPushButton[class="danger"] { 
+    background-color: rgba(255, 69, 58, 0.15); /* 半透明红底 */
+    color: #ff453a; 
+}
+QPushButton[class="danger"]:hover { 
+    background-color: #ff453a; 
+    color: #ffffff;
+}
+
+/* === 进度条：超细 === */
+QProgressBar { 
+    background-color: rgba(255, 255, 255, 0.1); 
+    border: none; 
+    height: 6px; /* 极细线条 */
+    border-radius: 3px; 
+}
+QProgressBar::chunk { 
+    background-color: #0a84ff; 
+    border-radius: 3px; 
+}
+
+/* === 选项卡：底部导航风格 === */
 QTabWidget::pane { border: none; }
-QTabBar::tab { background: #2d2d30; color: #888; padding: 8px 25px; border-top: 2px solid transparent; }
-QTabBar::tab:selected { background: #1e1e1e; color: #007acc; border-top: 2px solid #007acc; }
+QTabBar::tab { 
+    background: transparent; 
+    color: #8e8e93; 
+    padding: 10px 20px; 
+    font-size: 11pt; 
+    font-weight: 600;
+    border-bottom: 2px solid transparent;
+}
+QTabBar::tab:selected { 
+    color: #0a84ff; 
+    border-bottom: 2px solid #0a84ff; 
+}
+QTabBar::tab:hover { color: #ffffff; }
 """
 
 LIGHT_THEME = """
-QMainWindow, QWidget { background-color: #f0f0f0; color: #333333; font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 10pt; }
-QGroupBox { border: 1px solid #c0c0c0; border-radius: 4px; margin-top: 10px; padding-top: 15px; font-weight: bold; }
-QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; color: #005a9e; background-color: #f0f0f0; }
-QListWidget, QTextEdit, QLineEdit { background-color: #ffffff; border: 1px solid #c0c0c0; border-radius: 2px; color: #333; }
-QLineEdit:focus, QTextEdit:focus { border: 1px solid #005a9e; }
-QPushButton { background-color: #ffffff; color: #333; border: 1px solid #c0c0c0; padding: 6px 12px; border-radius: 2px; }
-QPushButton:hover { background-color: #eef6fb; border-color: #005a9e; }
-QPushButton:pressed { background-color: #cce4f7; }
-/* 强调按钮 */
-QPushButton[class="primary"] { background-color: #005a9e; color: white; border: 1px solid #005a9e; }
-QPushButton[class="primary"]:hover { background-color: #004578; border-color: #004578; }
-QPushButton[class="danger"] { background-color: #d13438; color: white; border: 1px solid #d13438; }
-QPushButton[class="danger"]:hover { background-color: #a4262c; border-color: #a4262c; }
-/* 进度条 - 文字改为深紫色 #800080，加粗防止看不清 */
-QProgressBar { 
-    border: 1px solid #c0c0c0; 
-    background-color: #e0e0e0; 
-    height: 16px; 
-    border-radius: 2px; 
-    text-align: center; 
-    color: #800080; 
-    font-weight: bold;
+/* === 全局基调：Apple System Light === */
+QMainWindow, QWidget { 
+    background-color: #f2f2f7; /* Apple System Gray 6 */
+    color: #000000; 
+    font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    font-size: 10pt;
 }
-QProgressBar::chunk { background-color: #005a9e; width: 10px; margin: 0.5px; }
-QTabWidget::pane { border: none; }
-QTabBar::tab { background: #e0e0e0; color: #666; padding: 8px 25px; border-top: 2px solid transparent; }
-QTabBar::tab:selected { background: #f0f0f0; color: #005a9e; border-top: 2px solid #005a9e; }
-"""
 
+/* === 顶部栏 === */
+QFrame#TopBar {
+    background-color: rgba(255, 255, 255, 0.7); /* 磨砂白 */
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+QLabel { color: #000000; }
+
+/* === 分组框：纯白卡片，轻微投影效果 === */
+QGroupBox { 
+    border: 1px solid rgba(0,0,0,0.03); /* 极淡边框替代阴影 */
+    border-radius: 12px; 
+    margin-top: 28px; 
+    background-color: #ffffff; 
+    padding-top: 20px;
+}
+QGroupBox::title { 
+    subcontrol-origin: margin; 
+    subcontrol-position: top left;
+    left: 10px;
+    padding: 0 5px; 
+    color: #8e8e93; 
+    font-weight: 600;
+    font-size: 10pt;
+    background-color: transparent;
+}
+
+/* === 文件列表 === */
+QListWidget { 
+    background-color: #f2f2f7; /* 内部浅灰，形成对比 */
+    border: none;
+    border-radius: 10px; 
+    outline: none;
+    padding: 5px;
+}
+QListWidget::item {
+    height: 36px;
+    padding-left: 10px;
+    border-radius: 8px;
+    margin-bottom: 2px;
+    color: #1c1c1e;
+}
+QListWidget::item:selected {
+    background-color: #007aff; 
+    color: #ffffff;
+}
+QListWidget::item:hover:!selected {
+    background-color: rgba(0, 0, 0, 0.04);
+}
+
+/* === 输入框 === */
+QLineEdit, QTextEdit { 
+    background-color: #f2f2f7; 
+    border: 1px solid transparent; 
+    border-radius: 8px; 
+    color: #1c1c1e; 
+    padding: 8px 10px;
+}
+QLineEdit:focus, QTextEdit:focus { 
+    background-color: #ffffff; 
+    border: 1px solid #007aff;
+}
+
+/* === 普通按钮 === */
+QPushButton { 
+    background-color: #ffffff; 
+    color: #000000; 
+    border: 1px solid rgba(0,0,0,0.1); /* 极细边框 */
+    padding: 8px 16px; 
+    border-radius: 8px; 
+    font-weight: 500;
+}
+QPushButton:hover { 
+    background-color: #f9f9f9; 
+    border-color: rgba(0,0,0,0.2);
+}
+QPushButton:pressed { 
+    background-color: #f0f0f0; 
+}
+
+/* === 核心按钮 === */
+QPushButton[class="primary"] { 
+    background-color: #007aff; 
+    color: #ffffff;
+    border: none;
+    font-weight: 600;
+    font-size: 11pt;
+}
+QPushButton[class="primary"]:hover { 
+    background-color: #006bd6; 
+}
+
+/* === 危险按钮 === */
+QPushButton[class="danger"] { 
+    background-color: #fff2f2; 
+    color: #ff3b30; 
+    border: 1px solid #ffcccc;
+}
+QPushButton[class="danger"]:hover { 
+    background-color: #ff3b30; 
+    color: #ffffff;
+    border: 1px solid #ff3b30;
+}
+
+/* === 进度条 === */
+QProgressBar { 
+    background-color: #e5e5ea; 
+    border: none; 
+    height: 6px; 
+    border-radius: 3px; 
+}
+QProgressBar::chunk { 
+    background-color: #007aff; 
+    border-radius: 3px; 
+}
+
+/* === 选项卡 === */
+QTabWidget::pane { border: none; }
+QTabBar::tab { 
+    background: transparent; 
+    color: #8e8e93; 
+    padding: 10px 20px; 
+    font-size: 11pt; 
+    font-weight: 600;
+    border-bottom: 2px solid transparent;
+}
+QTabBar::tab:selected { 
+    color: #007aff; 
+    border-bottom: 2px solid #007aff; 
+}
+QTabBar::tab:hover { color: #000000; }
+"""
 
 # ================= 组件：拖拽列表 (已升级文件夹递归支持) =================
 class DragDropListWidget(QListWidget):
@@ -400,19 +621,27 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # 1. 顶部状态栏
+        # 1. 顶部状态栏 - 高度 64px
         self.top_bar = QFrame()
-        self.top_bar.setFixedHeight(50)
-        hl = QHBoxLayout(self.top_bar)
-        hl.setContentsMargins(20, 0, 20, 0)
+        self.top_bar.setFixedHeight(64)
+        self.top_bar.setObjectName("TopBar")
 
-        self.lbl_title = QLabel("安全加密引擎内核 | 系统就绪")
-        self.lbl_title.setStyleSheet("font-weight: bold; font-size: 11pt; color: #007acc;")
+        hl = QHBoxLayout(self.top_bar)
+        hl.setContentsMargins(24, 0, 24, 0)
+        hl.setSpacing(20)  # 增加间距
+
+        self.lbl_title = QLabel("安全加密引擎内核")
+        # 苹果风字体设置：更细、更干净
+        self.lbl_title.setStyleSheet(
+            "font-family: 'Segoe UI', 'Microsoft YaHei'; font-weight: 600; font-size: 13pt; letter-spacing: 1px;")
         hl.addWidget(self.lbl_title)
+
+        # 增加一个弹簧，把按钮顶到右边
         hl.addStretch()
 
-        self.btn_theme = QPushButton("切换显示模式")
-        self.btn_theme.setFixedSize(110, 32)
+        self.btn_theme = QPushButton("外观模式")
+        self.btn_theme.setFixedSize(100, 36)
+        self.btn_theme.setCursor(Qt.PointingHandCursor)
         self.btn_theme.clicked.connect(self.toggle_theme)
         hl.addWidget(self.btn_theme)
 
@@ -577,7 +806,7 @@ class MainWindow(QMainWindow):
         vl = QVBoxLayout(page)
         vl.setContentsMargins(25, 25, 25, 25)
 
-        grp = QGroupBox("系统运行日志")
+        grp = QGroupBox("系统运行日志（提示：历史日志可在Logs文件夹下查找）")
         v = QVBoxLayout(grp)
         self.txt_log = QTextEdit()
         self.txt_log.setReadOnly(True)

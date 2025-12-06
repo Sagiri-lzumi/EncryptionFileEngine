@@ -52,7 +52,7 @@
 
 |           启动动画           |            批量加密            |
 |:------------------------:|:--------------------------:|
-| ![Splash](./PNG/img.png) | ![Main UI](/PNG/img_2.png) |
+| ![Splash](./PNG/img.png) | ![Main UI](/PNG/img_3.png) |
 
 ## 🛠️ 安装与运行 (Installation)
 

@@ -20,8 +20,7 @@ DIRS = {
     "DECRYPTED": os.path.join(BASE_DIR, "DecryptedFile"),
     "KEYS": os.path.join(BASE_DIR, "Keys"),
     "LOGS": os.path.join(BASE_DIR, "Logs"),
-    # [新增] SSD 加速缓存专用目录
-    "TEMP": os.path.join(BASE_DIR, "TempCache")
+    # [注意] 这里故意不定义 TEMP/SSD 目录，强制由用户在 UI 指定
 }
 
 # 智能分块策略
@@ -35,5 +34,5 @@ CHUNK_SIZES = {
 def init_directories():
     """初始化所有必要目录"""
     for path in DIRS.values():
-        if not os.path.exists(path):
+        if path and not os.path.exists(path):
             os.makedirs(path)

@@ -19,7 +19,6 @@ from config import DIRS
 from core.file_cipher import FileCipherEngine
 from core.logger import sys_logger
 
-# 尝试导入 Splash，如无则忽略
 try:
     from ui.splash import IntroScreen
 except ImportError:
@@ -117,7 +116,6 @@ class DragDropListWidget(QListWidget):
 
             if added and self.window():
                 try:
-                    # 触发约束检查
                     self.window().check_constraints()
                     self.window().reset_ui_state(self.window().tabs.currentIndex() == 0)
                 except:
@@ -324,6 +322,7 @@ class BatchWorkerThread(QThread):
                     working_root_base = self.custom_out  # 降级后直接写目标
                 else:
                     self.sig_log.emit(f"✅ [SSD 加速] 已启用。暂存区: {temp_stage_root}")
+                    self.sig_log.emit("ℹ️ 提示: SSD 加速时内存占用升高属于正常系统缓存现象")
                     # 清理并重建暂存区
                     if os.path.exists(temp_stage_root): shutil.rmtree(temp_stage_root, ignore_errors=True)
                     os.makedirs(temp_stage_root, exist_ok=True)
@@ -366,13 +365,14 @@ class BatchWorkerThread(QThread):
                         for p in parts:
                             if not p: continue
                             if self.is_enc:
-                                # 加密模式：根据勾选决定是否加密目录名
+                                # 【加密模式】：根据勾选决定是否加密目录名
                                 if self.encrypt_dirname:
                                     processed_parts.append(encrypt_dir_name_str(p))
                                 else:
                                     processed_parts.append(p)
                             else:
-                                # 【解密模式】恢复自动检测逻辑
+                                # 【解密模式】：强制自动检测前缀，不需要用户干预
+                                # 如果有 ENC_DIR_ 前缀就解密，没有就原样
                                 processed_parts.append(decrypt_dir_name_str(p))
 
                         rel_path_struct = os.sep.join(processed_parts)
@@ -387,7 +387,6 @@ class BatchWorkerThread(QThread):
                 if self.is_enc:
                     target_file_path = os.path.join(final_out_dir, fname + ".enc")
                 else:
-                    # 解密时可以去掉 .enc，也可以保留原名由 FileCipher 覆盖
                     target_file_path = os.path.join(final_out_dir, fname)
 
                 # 提交任务
@@ -397,9 +396,8 @@ class BatchWorkerThread(QThread):
                     self.queue, self.stop_event, self.pause_event
                 ))
 
-            # 5. 进度监听
+            # 5. 进度监听 (SSD模式下，此阶段占60%)
             finished_count = 0
-            # SSD 模式下，加密占 60% 进度，移动占 40%
             prog_factor = 0.6 if self.use_ssd else 1.0
 
             while finished_count < len(valid_files) and self._is_running:
@@ -439,9 +437,9 @@ class BatchWorkerThread(QThread):
             if not self._is_running:
                 executor.shutdown(wait=False, cancel_futures=True)
 
-        # 6. SSD 模式收尾：统一剪切
+        # 6. SSD 模式收尾：统一回写 (修复了 80% 卡顿问题)
         if self.use_ssd and self._is_running and temp_stage_root:
-            self.sig_log.emit("--- ⚡ SSD 高速回写 (统一剪切) ---")
+            self.sig_log.emit("--- ⚡ SSD 高速回写 (平滑传输) ---")
 
             try:
                 final_dest_root = self.custom_out
@@ -453,10 +451,25 @@ class BatchWorkerThread(QThread):
                     os.makedirs(final_dest_root, exist_ok=True)
 
                 items = os.listdir(temp_stage_root)
-                total_items = len(items)
-                moved_c = 0
+
+                # 【改动】预先计算回写阶段的总字节数，用于平滑进度
+                total_stage_bytes = 0
+                for item in items:
+                    src_p = os.path.join(temp_stage_root, item)
+                    if os.path.isfile(src_p):
+                        total_stage_bytes += os.path.getsize(src_p)
+                    # 简化处理：如果是文件夹暂不递归细算，通常SSD缓存是扁平或加密结构的
+                    elif os.path.isdir(src_p):
+                        # 简单估算，或者遍历累加
+                        for root, _, fs in os.walk(src_p):
+                            for f in fs: total_stage_bytes += os.path.getsize(os.path.join(root, f))
+
+                if total_stage_bytes == 0: total_stage_bytes = 1  # 防止除零
+
+                moved_bytes = 0
 
                 for item in items:
+                    if not self._is_running: break
                     src_item = os.path.join(temp_stage_root, item)
                     dst_item = os.path.join(final_dest_root, item)
 
@@ -466,11 +479,8 @@ class BatchWorkerThread(QThread):
                         else:
                             os.remove(dst_item)
 
-                    shutil.move(src_item, dst_item)
-
-                    moved_c += 1
-                    pct = 60 + int((moved_c / total_items) * 40)
-                    self.sig_progress.emit(f"回写数据... {pct}%", pct)
+                    # 执行移动并获取增量字节 (更新 moved_bytes)
+                    moved_bytes = self._manual_move(src_item, dst_item, moved_bytes, total_stage_bytes)
 
                 shutil.rmtree(temp_stage_root)
                 self.sig_log.emit("✅ 回写完成，缓存已清理")
@@ -481,6 +491,80 @@ class BatchWorkerThread(QThread):
         msg = "任务完成" if self._is_running else "已终止"
         self.sig_progress.emit(msg, 100)
         self.sig_finished.emit(results)
+
+    def _manual_move(self, src, dst, current_moved_total, total_stage_bytes):
+        """
+        手动移动函数：支持跨盘符平滑进度更新。
+        返回: 更新后的 current_moved_total
+        """
+        try:
+            # 1. 尝试原子重命名 (同盘符极快)
+            # 在 Linux/Unix 下 os.rename 可跨文件系统吗？通常不行。Windows 也不行。
+            # 先检查是否在同一设备
+            src_dev = os.stat(src).st_dev
+            dst_dir = os.path.dirname(dst)
+            if not os.path.exists(dst_dir): os.makedirs(dst_dir, exist_ok=True)
+            dst_dev = os.stat(dst_dir).st_dev
+
+            is_dir = os.path.isdir(src)
+
+            # 如果在同一设备，直接移动（瞬间完成），直接加进度
+            if src_dev == dst_dev:
+                shutil.move(src, dst)
+                # 计算大小增量
+                if is_dir:
+                    size = 0
+                    for r, _, fs in os.walk(dst):
+                        for f in fs: size += os.path.getsize(os.path.join(r, f))
+                    return current_moved_total + size
+                else:
+                    return current_moved_total + os.path.getsize(dst)
+
+            # 2. 跨设备移动 (SSD -> HDD)：手动复制并更新进度
+            if is_dir:
+                # 文件夹递归处理略复杂，这里简化使用 shutil.move 但无法细粒度更新
+                # 或者使用 shutil.copytree 的机制。
+                # 考虑到加密结构通常是单文件处理，这里如果是目录，直接 move
+                # 除非我们重写 copytree。为保持稳定性，目录仍用 move，文件用流式。
+                shutil.move(src, dst)
+                # 估算增加进度
+                size = 0
+                for r, _, fs in os.walk(dst):
+                    for f in fs: size += os.path.getsize(os.path.join(r, f))
+                return current_moved_total + size
+
+            else:
+                # 文件：手动流式复制
+                f_size = os.path.getsize(src)
+                chunk_size = 10 * 1024 * 1024  # 10MB chunk
+
+                with open(src, 'rb') as fsrc, open(dst, 'wb') as fdst:
+                    while True:
+                        if not self._is_running: raise InterruptedError("Stopped")
+                        buf = fsrc.read(chunk_size)
+                        if not buf: break
+                        fdst.write(buf)
+
+                        # 【核心】细粒度更新进度
+                        current_moved_total += len(buf)
+                        # 映射到 60% - 100% 区间
+                        pct = 60 + int((current_moved_total / total_stage_bytes) * 40)
+                        pct = min(pct, 99)
+                        self.sig_progress.emit(f"回写数据... {pct}%", pct)
+
+                # 复制完后删除源
+                os.remove(src)
+                # 复制元数据
+                shutil.copystat(src, dst) if os.path.exists(src) else None
+
+                return current_moved_total
+
+        except Exception as e:
+            self.sig_log.emit(f"⚠️ 手动移动警告: {e}, 尝试回退到 shutil.move")
+            if os.path.exists(src) and not os.path.exists(dst):
+                shutil.move(src, dst)
+                return current_moved_total + os.path.getsize(dst)
+            return current_moved_total
 
 
 # ================= 主窗口 =================
@@ -535,7 +619,6 @@ class MainWindow(QMainWindow):
         self._init_tab_decrypt()
         self._init_tab_log()
 
-        # 初始化时检查一次约束
         self.check_constraints()
 
     def _create_common_layout(self, is_encrypt):
@@ -556,10 +639,10 @@ class MainWindow(QMainWindow):
         btn_del.clicked.connect(lambda: self.action_remove_file(file_list, is_encrypt))
         btn_clr = QPushButton("清空队列")
         btn_clr.clicked.connect(lambda: (file_list.clear(), self.reset_ui_state(is_encrypt)))
-        btn_bar.addWidget(btn_add);
-        btn_bar.addWidget(btn_del);
+        btn_bar.addWidget(btn_add)
+        btn_bar.addWidget(btn_del)
         btn_bar.addWidget(btn_clr)
-        v_left.addWidget(file_list);
+        v_left.addWidget(file_list)
         v_left.addLayout(btn_bar)
 
         # 右侧配置
@@ -583,37 +666,44 @@ class MainWindow(QMainWindow):
         btn_path = QPushButton("浏览...")
         btn_path.setFixedWidth(80)
         btn_path.clicked.connect(lambda: self.action_select_dir(is_encrypt))
-        h_path.addWidget(txt_path);
+        h_path.addWidget(txt_path)
         h_path.addWidget(btn_path)
         v_right.addLayout(h_path)
 
-        # --- [修改] 目录结构选项 ---
+        # --- 目录结构选项 ---
         chk_struct = QCheckBox("保留目录层级结构")
-        chk_dir_name_enc = QCheckBox("解密文件夹名称（按需选）")
-        chk_dir_name_enc.setEnabled(False)
+
+        # 【修改】仅在加密模式下显示“加密文件夹名称”，解密模式彻底移除
+        chk_dir_name_enc = None
+        if is_encrypt:
+            chk_dir_name_enc = QCheckBox("加密文件夹名称")
+            chk_dir_name_enc.setEnabled(False)
 
         def on_struct_toggled(state):
             is_checked = (state == 2)
-            chk_dir_name_enc.setEnabled(is_checked)
-            if not is_checked:
-                chk_dir_name_enc.setChecked(False)
+            if chk_dir_name_enc:
+                chk_dir_name_enc.setEnabled(is_checked)
+                if not is_checked:
+                    chk_dir_name_enc.setChecked(False)
 
         chk_struct.stateChanged.connect(on_struct_toggled)
 
         v_right.addWidget(chk_struct)
-        v_right.addWidget(chk_dir_name_enc)
+        if chk_dir_name_enc:
+            v_right.addWidget(chk_dir_name_enc)
 
-        line = QFrame();
-        line.setFrameShape(QFrame.HLine);
+        line = QFrame()
+        line.setFrameShape(QFrame.HLine)
         line.setFrameShadow(QFrame.Sunken)
         v_right.addWidget(line)
 
         # --- SSD 加速 ---
         chk_ssd = QCheckBox("启用 SSD 固态硬盘缓存加速")
         h_ssd = QHBoxLayout()
-        # 兼容 config 可能没有 TEMP 的情况
-        temp_dir = DIRS["TEMP"] if "TEMP" in DIRS else ""
-        txt_ssd = QLineEdit(temp_dir)
+
+        # 【核心修改】默认为空，不给任何预设值，强迫用户手动择盘
+        txt_ssd = QLineEdit("")
+        txt_ssd.setPlaceholderText("请选择 SSD 高速缓存目录")
         txt_ssd.setReadOnly(True)
         txt_ssd.setEnabled(False)
         btn_ssd = QPushButton("择盘")
@@ -624,19 +714,18 @@ class MainWindow(QMainWindow):
             is_checked = (state == 2)
             txt_ssd.setEnabled(is_checked)
             btn_ssd.setEnabled(is_checked)
-            if is_checked and not self.custom_ssd_path and "TEMP" in DIRS:
-                self.custom_ssd_path = DIRS["TEMP"]
+            # 勾选后，文本框变亮，但依然为空，等待用户点击"择盘"
 
         chk_ssd.stateChanged.connect(on_ssd_toggled)
         btn_ssd.clicked.connect(lambda: self.action_select_ssd(is_encrypt))
 
-        h_ssd.addWidget(txt_ssd);
+        h_ssd.addWidget(txt_ssd)
         h_ssd.addWidget(btn_ssd)
         v_right.addWidget(chk_ssd)
         v_right.addLayout(h_ssd)
 
-        line2 = QFrame();
-        line2.setFrameShape(QFrame.HLine);
+        line2 = QFrame()
+        line2.setFrameShape(QFrame.HLine)
         line2.setFrameShadow(QFrame.Sunken)
         v_right.addWidget(line2)
 
@@ -668,8 +757,8 @@ class MainWindow(QMainWindow):
 
         stack = QStackedWidget()
 
-        w_start = QWidget();
-        l_start = QVBoxLayout(w_start);
+        w_start = QWidget()
+        l_start = QVBoxLayout(w_start)
         l_start.setContentsMargins(0, 0, 0, 0)
         btn_run = QPushButton(f"执行{'加密' if is_encrypt else '解密'}程序")
         btn_run.setProperty("class", "primary")
@@ -678,32 +767,32 @@ class MainWindow(QMainWindow):
         l_start.addWidget(btn_run)
         stack.addWidget(w_start)
 
-        w_ctrl = QWidget();
-        l_ctrl = QHBoxLayout(w_ctrl);
-        l_ctrl.setContentsMargins(0, 0, 0, 0);
+        w_ctrl = QWidget()
+        l_ctrl = QHBoxLayout(w_ctrl)
+        l_ctrl.setContentsMargins(0, 0, 0, 0)
         l_ctrl.setSpacing(10)
-        btn_pause = QPushButton("挂起任务");
-        btn_pause.setMinimumHeight(48);
+        btn_pause = QPushButton("挂起任务")
+        btn_pause.setMinimumHeight(48)
         btn_pause.clicked.connect(self.action_toggle_pause)
-        btn_stop = QPushButton("终止操作");
-        btn_stop.setProperty("class", "danger");
-        btn_stop.setMinimumHeight(48);
+        btn_stop = QPushButton("终止操作")
+        btn_stop.setProperty("class", "danger")
+        btn_stop.setMinimumHeight(48)
         btn_stop.clicked.connect(self.action_stop_task)
-        l_ctrl.addWidget(btn_pause);
+        l_ctrl.addWidget(btn_pause)
         l_ctrl.addWidget(btn_stop)
         stack.addWidget(w_ctrl)
 
-        w_res = QWidget();
-        l_res = QHBoxLayout(w_res);
-        l_res.setContentsMargins(0, 0, 0, 0);
+        w_res = QWidget()
+        l_res = QHBoxLayout(w_res)
+        l_res.setContentsMargins(0, 0, 0, 0)
         l_res.setSpacing(10)
-        btn_open = QPushButton("打开输出目录");
-        btn_open.setMinimumHeight(48);
+        btn_open = QPushButton("打开输出目录")
+        btn_open.setMinimumHeight(48)
         btn_open.clicked.connect(self.action_open_folder)
-        btn_back = QPushButton("返回继续工作");
-        btn_back.setMinimumHeight(48);
+        btn_back = QPushButton("返回继续工作")
+        btn_back.setMinimumHeight(48)
         btn_back.clicked.connect(lambda: self.reset_ui_state(is_encrypt))
-        l_res.addWidget(btn_open);
+        l_res.addWidget(btn_open)
         l_res.addWidget(btn_back)
         stack.addWidget(w_res)
 
@@ -734,13 +823,13 @@ class MainWindow(QMainWindow):
 
     def _init_tab_log(self):
         page = QWidget()
-        vl = QVBoxLayout(page);
+        vl = QVBoxLayout(page)
         vl.setContentsMargins(25, 25, 25, 25)
-        grp = QGroupBox("系统运行日志");
+        grp = QGroupBox("系统运行日志")
         v = QVBoxLayout(grp)
-        self.txt_log = QTextEdit();
+        self.txt_log = QTextEdit()
         self.txt_log.setReadOnly(True)
-        v.addWidget(self.txt_log);
+        v.addWidget(self.txt_log)
         vl.addWidget(grp)
         self.tabs.addTab(page, "日志审计")
 
@@ -759,26 +848,19 @@ class MainWindow(QMainWindow):
         self.ui_dec["list"].viewport().update()
 
     def check_constraints(self):
-        """
-        [新增] 约束检查：
-        如果 输出目录 == 源目录 (即用户没选输出目录，path 为空)，
-        则强制禁用并取消勾选 '保留目录层级'。
-        """
         # 加密界面
         enc_path = self.custom_enc_path
-        if not enc_path:  # 没选，默认为空，意味着原地
+        if not enc_path:
             self.ui_enc["chk_struct"].setChecked(False)
             self.ui_enc["chk_struct"].setEnabled(False)
             self.ui_enc["chk_struct"].setToolTip("原地输出不可保留目录层级，防止覆盖")
-
-            # 【已修改】移除了强制关闭文件名的逻辑，即使原地加密，也允许用户勾选（默认已勾选）
         else:
             self.ui_enc["chk_struct"].setEnabled(True)
             self.ui_enc["chk_struct"].setToolTip("")
-            if self.ui_enc["chk_name"]:
-                self.ui_enc["chk_name"].setEnabled(True)
+            if self.ui_enc["chk_struct"].isChecked() and self.ui_enc["chk_dir_name_enc"]:
+                self.ui_enc["chk_dir_name_enc"].setEnabled(True)
 
-        # 解密界面同理 (虽然解密一般不需要chk_name，但chk_struct需要)
+        # 解密界面
         dec_path = self.custom_dec_path
         if not dec_path:
             self.ui_dec["chk_struct"].setChecked(False)
@@ -807,10 +889,10 @@ class MainWindow(QMainWindow):
         d = QFileDialog.getExistingDirectory(self, "选择输出目录")
         if d:
             if is_encrypt:
-                self.custom_enc_path = d;
+                self.custom_enc_path = d
                 self.ui_enc["path"].setText(d)
             else:
-                self.custom_dec_path = d;
+                self.custom_dec_path = d
                 self.ui_dec["path"].setText(d)
         self.check_constraints()
 
@@ -846,15 +928,20 @@ class MainWindow(QMainWindow):
         files = [ui["list"].item(i).text() for i in range(count)]
         path = self.custom_enc_path if is_encrypt else self.custom_dec_path
 
-        # 获取选项状态
         keep_struct = ui["chk_struct"].isChecked()
-        enc_dirname = ui["chk_dir_name_enc"].isEnabled() and ui["chk_dir_name_enc"].isChecked()
+
+        # [修改] 解密模式默认为 False (由Worker内部逻辑自动处理)
+        enc_dirname = False
+        if is_encrypt and ui["chk_dir_name_enc"]:
+            enc_dirname = ui["chk_dir_name_enc"].isEnabled() and ui["chk_dir_name_enc"].isChecked()
+
         use_ssd = ui["chk_ssd"].isChecked()
         ssd_path = self.custom_ssd_path if use_ssd else None
 
-        if use_ssd and not ssd_path:
-            if "TEMP" in DIRS:
-                ssd_path = DIRS["TEMP"]
+        # 【核心修改】SSD 强制校验：勾选了但没选盘，必须弹窗阻止运行
+        if use_ssd and (not ssd_path or not os.path.exists(ssd_path)):
+            return QMessageBox.warning(self, "参数缺失",
+                                       "您已启用 SSD 加速，但未选择有效的缓存目录。\n请点击 '择盘' 按钮设置路径。")
 
         ui["list"].setEnabled(False)
         ui["pwd"].setEnabled(False)
@@ -896,14 +983,14 @@ class MainWindow(QMainWindow):
         is_enc_task = self.worker.is_enc
         ui = self.ui_enc if is_enc_task else self.ui_dec
         if self.is_paused:
-            self.worker.resume();
+            self.worker.resume()
             self.is_paused = False
-            ui["btn_pause"].setText("挂起任务");
+            ui["btn_pause"].setText("挂起任务")
             ui["status"].setText("正在处理...")
         else:
-            self.worker.pause();
+            self.worker.pause()
             self.is_paused = True
-            ui["btn_pause"].setText("继续任务");
+            ui["btn_pause"].setText("继续任务")
             ui["status"].setText("任务已挂起")
 
     def action_stop_task(self):
@@ -927,7 +1014,7 @@ class MainWindow(QMainWindow):
             self.append_log("正在执行安全删除...")
             for src, _ in results["success"]:
                 try:
-                    os.remove(src);
+                    os.remove(src)
                     self.append_log(f"已移除源文件: {os.path.basename(src)}")
                 except Exception as e:
                     self.append_log(f"移除失败 {src}: {e}")

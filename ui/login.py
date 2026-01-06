@@ -10,10 +10,10 @@ class LoginDialog(QDialog):
         self.auth = AuthService()
 
         layout = QVBoxLayout(self)
-        self.user_in = QLineEdit();
+        self.user_in = QLineEdit()
         self.user_in.setPlaceholderText("用户名")
-        self.pass_in = QLineEdit();
-        self.pass_in.setPlaceholderText("密码");
+        self.pass_in = QLineEdit()
+        self.pass_in.setPlaceholderText("密码")
         self.pass_in.setEchoMode(QLineEdit.Password)
 
         btn = QPushButton("登录系统")

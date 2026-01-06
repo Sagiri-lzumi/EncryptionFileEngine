@@ -29,3 +29,6 @@ dist/*
 
 # 秘钥文件
 Keys/*
+
+export_code.py
+all_code.txt

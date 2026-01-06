@@ -14,9 +14,9 @@ def main():
     # 1. Windows 多进程打包必须
     multiprocessing.freeze_support()
 
-    # 2. [新增] 提示 Windows 这是一个独立的应用程序
+    # 2. 提示 Windows 这是一个独立的应用程序
     try:
-        myappid = 'security.fileengine.cipher.1.0'  # 任意唯一的字符串
+        myappid = 'security.fileengine.cipher.1.0'
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except ImportError:
         pass
@@ -24,13 +24,10 @@ def main():
     init_directories()
     app = QApplication(sys.argv)
 
-    # 3. [新增] 设置全局应用图标
-    # 只要你的 fileenc.ico 在项目根目录下，这里就能加载到
+    # 3. 设置全局应用图标
     icon_path = os.path.join(BASE_DIR, "fileenc.ico")
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
-    else:
-        print(f"⚠️ 未找到图标文件: {icon_path}")
 
     splash = IntroScreen()
     splash.show()

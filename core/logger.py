@@ -113,11 +113,15 @@ class LoggerService:
             if not os.path.exists(log_dir):
                 os.makedirs(log_dir, exist_ok=True)
 
-            # 2. 生成文件名
-            # 使用固定文件名以便轮转
-            log_file = os.path.join(log_dir, "system_audit.log")
+            # 2. 生成文件名 (修改处：Encrypt_年月日_时分秒.log)
+            # 例如: Encrypt_20251204_205208.log
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            log_filename = f"Encrypt_{timestamp}.log"
+            log_file = os.path.join(log_dir, log_filename)
 
             # --- Handler A: 文件 (带轮转，最大 10MB，保留 5 个备份) ---
+            # 注意：由于文件名包含秒级时间戳，每次重启程序都会生成新文件。
+            # RotatingFileHandler 在这里主要防止单次运行日志过大 (超过10MB会切分)。
             # delay=False 确保立即创建文件，避免权限问题延后暴露
             file_handler = logging.handlers.RotatingFileHandler(
                 log_file,

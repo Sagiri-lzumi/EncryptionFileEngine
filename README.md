@@ -1,5 +1,5 @@
 # 🔒 Encryption Studio 
-
+`ultra branch`
 
 **Encryption Studio** 是一个基于 Python 和 PySide6 开发的高级本地文件安全防御系统。它提供现代化的图形界面，支持大文件智能分块加密、文件名混淆、多线程批量处理以及多种文本加密算法。
 

@@ -569,7 +569,7 @@ class MainWindow(QMainWindow):
         left_container.setObjectName("ContentPanel")
         v_left = QVBoxLayout(left_container)
         v_left.setContentsMargins(20, 20, 20, 20)
-        v_left.setSpacing(15)
+        v_left.setSpacing(12)
 
         # 系统状态提示
         h_status = QHBoxLayout()
@@ -624,12 +624,12 @@ class MainWindow(QMainWindow):
         # === 右侧：配置面板 (Card) ===
         right_container = QFrame()
         right_container.setObjectName("ContentPanel")
-        right_container.setMinimumWidth(400)
-        right_container.setMaximumWidth(500)
+        right_container.setMinimumWidth(380)
+        right_container.setMaximumWidth(450)
 
         v_right = QVBoxLayout(right_container)
         v_right.setContentsMargins(20, 20, 20, 20)
-        v_right.setSpacing(20)
+        v_right.setSpacing(16)
 
         lbl_settings = QLabel("⚙️ 任务配置")
         lbl_settings.setObjectName("SectionTitle")
@@ -639,7 +639,7 @@ class MainWindow(QMainWindow):
         grp_sec = QGroupBox("安全凭证")
         v_sec = QVBoxLayout(grp_sec)
         v_sec.setSpacing(10)
-        v_sec.setContentsMargins(15, 25, 15, 15)
+        v_sec.setContentsMargins(15, 20, 15, 15)
 
         # 老系统：密码输入
         self.old_sec_widget = QWidget() if is_encrypt else QWidget()
@@ -683,7 +683,7 @@ class MainWindow(QMainWindow):
         grp_io = QGroupBox("输出路径")
         v_io = QVBoxLayout(grp_io)
         v_io.setSpacing(10)
-        v_io.setContentsMargins(15, 25, 15, 15)
+        v_io.setContentsMargins(15, 20, 15, 15)
 
         h_path = QHBoxLayout()
         txt_path = QLineEdit()
@@ -737,7 +737,7 @@ class MainWindow(QMainWindow):
         grp_adv = QGroupBox("高级策略")
         v_adv = QVBoxLayout(grp_adv)
         v_adv.setSpacing(10)
-        v_adv.setContentsMargins(15, 25, 15, 15)
+        v_adv.setContentsMargins(15, 20, 15, 15)
 
         h_ssd = QHBoxLayout()
         txt_ssd = QLineEdit()
@@ -1012,8 +1012,8 @@ class MainWindow(QMainWindow):
     def show_theme_selector(self):
         """显示主题选择器"""
         btn_pos = self.btn_theme.mapToGlobal(QPoint(0, 0))
-        popup_x = btn_pos.x()
-        popup_y = btn_pos.y() - self.theme_selector.height() - 10
+        popup_x = btn_pos.x() + self.btn_theme.width() + 10
+        popup_y = btn_pos.y() - (self.theme_selector.height() - self.btn_theme.height()) // 2
         self.theme_selector.show_at(QPoint(popup_x, popup_y))
 
     def on_theme_selected(self, theme_name):
@@ -1033,124 +1033,11 @@ class MainWindow(QMainWindow):
 
         qss = f"""
         QMainWindow {{
-            background-color: {t['bg']};
+            background: {t['bg']};
         }}
         QWidget {{
             color: {t['fg']};
-            font-family: -apple-system, 'SF Pro Text', 'Segoe UI', sans-serif;
-        }}
-        QFrame#Sidebar {{
-            background-color: {t['sidebar']};
-            border: none;
-        }}
-        QLabel#AppTitle {{
-            color: {t['fg']};
-            font-size: 20px;
-            font-weight: 600;
-            letter-spacing: -0.5px;
-        }}
-        QFrame#ContentPanel {{
-            background-color: {t['panel']};
-            border: 1px solid {t['border']};
-            border-radius: 20px;
-        }}
-        QLabel#SectionTitle {{
-            color: {t['fg']};
-            font-size: 15px;
-            font-weight: 600;
-            padding-bottom: 10px;
-            border: none;
-        }}
-        QLineEdit, QTextEdit, QComboBox {{
-            background-color: {t['input_bg']};
-            border: 1px solid {t['border']};
-            border-radius: 10px;
-            color: {t['fg']};
-            padding: 10px 14px;
-            font-size: 14px;
-        }}
-        QLineEdit:focus, QComboBox:focus {{
-            border: 2px solid {t['accent']};
-            padding: 9px 13px;
-        }}
-        QComboBox::drop-down {{
-            border: none;
-            width: 30px;
-        }}
-        QComboBox::down-arrow {{
-            image: none;
-            border-left: 5px solid transparent;
-            border-right: 5px solid transparent;
-            border-top: 7px solid {t['text_sec']};
-            margin-right: 10px;
-        }}
-        QGroupBox {{
-            border: none;
-            background-color: {t['input_bg']};
-            border-radius: 12px;
-            margin-top: 8px;
-            padding: 20px 16px 16px 16px;
-            color: {t['fg']};
-            font-weight: 600;
-            font-size: 13px;
-        }}
-        QGroupBox::title {{
-            subcontrol-origin: margin;
-            left: 16px;
-            top: 8px;
-            padding: 0 6px;
-        }}
-        QFrame#StatusContainer {{
-            background-color: {t['input_bg']};
-            border-radius: 12px;
-            padding: 12px;
-        }}
-        QListWidget {{
-            background-color: {t['list_bg']};
-            border: 1px solid {t['border']};
-            border-radius: 12px;
-            padding: 6px;
-        }}
-        QListWidget::item {{
-            border-radius: 8px;
-            padding: 10px 12px;
-            margin: 2px 0px;
-        }}
-        QListWidget::item:selected {{
-            background-color: {t['accent']};
-            color: white;
-        }}
-        QListWidget::item:hover {{
-            background-color: {t['input_bg']};
-        }}
-        QProgressBar {{
-            background-color: {t['input_bg']};
-            border: none;
-            border-radius: 6px;
-            text-align: center;
-            font-weight: 500;
-            height: 8px;
-        }}
-        QProgressBar::chunk {{
-            background-color: {t['accent']};
-            border-radius: 6px;
-        }}
-        """
-        self.setStyleSheet(qss)
-        for btn in self.all_buttons:
-            btn.update_theme(t)
-
-        for btn in self.sidebar_btns:
-            btn.update()
-
-        self.ui_enc["list"].update_theme(t)
-        self.ui_dec["list"].update_theme(t)
-
-        qss = f"""
-        QMainWindow, QWidget {{
-            background-color: {t['bg']};
-            color: {t['fg']};
-            font-family: 'SF Pro Text', 'Segoe UI', sans-serif;
+            font-family: 'Segoe UI', sans-serif;
         }}
         QFrame#Sidebar {{
             background-color: {t['sidebar']};
@@ -1158,9 +1045,8 @@ class MainWindow(QMainWindow):
         }}
         QLabel#AppTitle {{
             color: {t['fg']};
-            font-size: 18pt;
+            font-size: 18px;
             font-weight: 600;
-            letter-spacing: -0.5px;
         }}
         QFrame#ContentPanel {{
             background-color: {t['panel']};
@@ -1169,14 +1055,9 @@ class MainWindow(QMainWindow):
         }}
         QLabel#SectionTitle {{
             color: {t['fg']};
-            font-size: 13pt;
+            font-size: 14px;
             font-weight: 600;
-            padding-bottom: 8px;
-            border-bottom: 2px solid {t['accent']};
-        }}
-        QLabel#StatusLabel {{
-            color: {t['text_sec']};
-            font-weight: 500;
+            margin-bottom: 8px;
         }}
         QLineEdit, QTextEdit, QComboBox {{
             background-color: {t['input_bg']};
@@ -1188,64 +1069,85 @@ class MainWindow(QMainWindow):
         }}
         QLineEdit:focus, QComboBox:focus {{
             border: 2px solid {t['accent']};
-            padding: 7px 11px;
         }}
         QComboBox::drop-down {{
             border: none;
-            width: 20px;
+            width: 30px;
         }}
         QComboBox::down-arrow {{
             image: none;
             border-left: 4px solid transparent;
             border-right: 4px solid transparent;
             border-top: 6px solid {t['text_sec']};
-            margin-right: 8px;
+            margin-right: 10px;
         }}
         QGroupBox {{
             border: 1px solid {t['border']};
             border-radius: 10px;
             margin-top: 12px;
-            padding-top: 12px;
+            padding-top: 20px;
+            font-weight: 600;
+            font-size: 13px;
             color: {t['fg']};
-            font-weight: 500;
         }}
         QGroupBox::title {{
             subcontrol-origin: margin;
             left: 12px;
-            padding: 0 8px;
+            padding: 0 6px;
         }}
         QFrame#StatusContainer {{
             background-color: {t['input_bg']};
-            border-radius: 8px;
-            padding: 10px;
+            border: 1px solid {t['border']};
+            border-radius: 10px;
+            padding: 12px;
         }}
         QListWidget {{
             background-color: {t['list_bg']};
             border: 1px solid {t['border']};
             border-radius: 10px;
-            padding: 4px;
+            padding: 6px;
         }}
         QListWidget::item {{
             border-radius: 6px;
-            padding: 8px;
-            margin: 2px;
+            padding: 8px 10px;
+            margin: 2px 0px;
         }}
         QListWidget::item:selected {{
             background-color: {t['accent']};
             color: white;
         }}
         QListWidget::item:hover {{
-            background-color: {t['input_bg']};
+            background-color: {t['border']};
         }}
         QProgressBar {{
             background-color: {t['input_bg']};
-            border-radius: 4px;
+            border: 1px solid {t['border']};
+            border-radius: 6px;
             text-align: center;
-            font-weight: 500;
+            height: 8px;
         }}
         QProgressBar::chunk {{
             background-color: {t['accent']};
+            border-radius: 5px;
+        }}
+        QCheckBox {{
+            spacing: 8px;
+            color: {t['fg']};
+            font-size: 13px;
+        }}
+        QCheckBox::indicator {{
+            width: 18px;
+            height: 18px;
             border-radius: 4px;
+            border: 2px solid {t['border']};
+            background: {t['input_bg']};
+        }}
+        QCheckBox::indicator:hover {{
+            border-color: {t['accent']};
+        }}
+        QCheckBox::indicator:checked {{
+            background-color: {t['accent']};
+            border-color: {t['accent']};
         }}
         """
         self.setStyleSheet(qss)

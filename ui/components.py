@@ -1,7 +1,30 @@
-from PySide6.QtWidgets import QPushButton, QListWidget, QAbstractItemView, QCheckBox, QStyle, QStyleOptionButton, QWidget
+from PySide6.QtWidgets import QPushButton, QListWidget, QAbstractItemView, QCheckBox, QStyle, QStyleOptionButton, QWidget, QGraphicsBlurEffect
 from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QRectF, Property, QRect, QPoint, QParallelAnimationGroup, Signal
 from PySide6.QtGui import QPainter, QColor, QPainterPath, QPen, QFont
 import os
+
+
+class GlassWidget(QWidget):
+    """液态玻璃效果的Widget"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        # 绘制半透明背景
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(self.rect()), 20, 20)
+
+        # 背景色
+        painter.fillPath(path, QColor(255, 255, 255, 180))
+
+        # 边框高光
+        painter.setPen(QPen(QColor(255, 255, 255, 200), 1))
+        painter.drawPath(path)
+
 
 
 class ThemeButton(QPushButton):
@@ -138,16 +161,14 @@ class ThemeSelector(QWidget):
 
         # 背景淡出
         self._bg_anim.stop()
-        self._bg_anim.setStartValue(1.0)
+        self._bg_anim.setStartValue(self._bg_opacity)
         self._bg_anim.setEndValue(0.0)
+        self._bg_anim.finished.connect(self.hide)
         self._bg_anim.start()
 
         # 按钮隐藏
         for btn in reversed(self.theme_buttons):
             btn.hide_animated()
-
-        from PySide6.QtCore import QTimer
-        QTimer.singleShot(300, self.hide)
 
     def paintEvent(self, event):
         """绘制半透明背景"""

@@ -1,20 +1,41 @@
 THEMES = {
-    "Deep Space": {
-        "bg": "#121212", "sidebar": "#1a1a1a", "panel": "#242424",
-        "border": "#383838", "fg": "#e0e0e0", "text_sec": "#9e9e9e",
-        "accent": "#5c6bc0", "accent_hover": "#7986cb",
-        "danger": "#ef5350", "input_bg": "#2c2c2c", "list_bg": "#1a1a1a"
+    "Light": {
+        "bg": "#FFFFFF",
+        "fg": "#1D1D1F",
+        "sidebar": "#F5F5F7",
+        "panel": "#FFFFFF",
+        "border": "#D2D2D7",
+        "accent": "#007AFF",
+        "accent_hover": "#0051D5",
+        "danger": "#FF3B30",
+        "text_sec": "#86868B",
+        "input_bg": "#F5F5F7",
+        "list_bg": "#FAFAFA",
     },
-    "Polaris": {
-        "bg": "#f0f2f5", "sidebar": "#ffffff", "panel": "#ffffff",
-        "border": "#dce3e8", "fg": "#2c3e50", "text_sec": "#7f8c8d",
-        "accent": "#007bff", "accent_hover": "#3395ff",
-        "danger": "#ff4d4d", "input_bg": "#f7f9fa", "list_bg": "#ffffff"
+    "Dark": {
+        "bg": "#000000",
+        "fg": "#F5F5F7",
+        "sidebar": "#1C1C1E",
+        "panel": "#1C1C1E",
+        "border": "#38383A",
+        "accent": "#0A84FF",
+        "accent_hover": "#409CFF",
+        "danger": "#FF453A",
+        "text_sec": "#98989D",
+        "input_bg": "#2C2C2E",
+        "list_bg": "#1C1C1E",
     },
-    "Cyber Punk": {
-        "bg": "#0b0c15", "sidebar": "#151725", "panel": "#1c1f2e",
-        "border": "#2a2d3e", "fg": "#e0e6ed", "text_sec": "#6c757d",
-        "accent": "#ff0055", "accent_hover": "#ff3377",
-        "danger": "#ff2a2a", "input_bg": "#151725", "list_bg": "#151725"
+    "Graphite": {
+        "bg": "#F2F2F7",
+        "fg": "#1D1D1F",
+        "sidebar": "#E5E5EA",
+        "panel": "#FFFFFF",
+        "border": "#C7C7CC",
+        "accent": "#8E8E93",
+        "accent_hover": "#636366",
+        "danger": "#FF3B30",
+        "text_sec": "#8E8E93",
+        "input_bg": "#E5E5EA",
+        "list_bg": "#F9F9FB",
     }
 }

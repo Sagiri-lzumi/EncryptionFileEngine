@@ -194,7 +194,7 @@ class CustomCheckBox(QCheckBox):
         painter.setRenderHint(QPainter.Antialiasing)
 
         from ui.themes import THEMES
-        theme = self.window().theme_data if hasattr(self.window(), 'theme_data') else THEMES["Deep Space"]
+        theme = self.window().theme_data if hasattr(self.window(), 'theme_data') else THEMES["Light"]
 
         # 绘制复选框
         box_size = 20
@@ -297,7 +297,7 @@ class AnimatedSidebarButton(QPushButton):
         rect = self.rect()
 
         from ui.themes import THEMES
-        theme = self.window().theme_data if hasattr(self.window(), 'theme_data') else THEMES["Deep Space"]
+        theme = self.window().theme_data if hasattr(self.window(), 'theme_data') else THEMES["Light"]
 
         # 背景色混合
         bg_color = QColor(theme['accent'])
@@ -413,7 +413,7 @@ class DragDropListWidget(QListWidget):
         self.setSelectionMode(QAbstractItemView.ExtendedSelection)
 
         from ui.themes import THEMES
-        self.theme_data = THEMES["Deep Space"]
+        self.theme_data = THEMES["Light"]
 
     def update_theme(self, theme_data):
         self.theme_data = theme_data

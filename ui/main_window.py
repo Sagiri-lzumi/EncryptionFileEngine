@@ -370,7 +370,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1100, 650)
 
         self.theme_names = list(THEMES.keys())
-        self.current_theme_idx = 0
+        self.current_theme_idx = 0  # 默认Light主题
         self.theme_data = THEMES[self.theme_names[0]]
 
         self.custom_enc_path = None
@@ -404,21 +404,21 @@ class MainWindow(QMainWindow):
 
         # === 1. 左侧导航栏 ===
         self.sidebar = QFrame()
-        self.sidebar.setFixedWidth(240)
+        self.sidebar.setFixedWidth(200)
         self.sidebar.setObjectName("Sidebar")
 
         v_sidebar = QVBoxLayout(self.sidebar)
-        v_sidebar.setContentsMargins(15, 30, 15, 30)
-        v_sidebar.setSpacing(15)
+        v_sidebar.setContentsMargins(20, 40, 20, 30)
+        v_sidebar.setSpacing(12)
 
         # 标题
-        lbl_title = QLabel("🛡️ 安全引擎")
+        lbl_title = QLabel("🔐 Encryption")
         lbl_title.setObjectName("AppTitle")
         lbl_title.setAlignment(Qt.AlignCenter)
-        lbl_title.setFixedHeight(60)
+        lbl_title.setFixedHeight(50)
         v_sidebar.addWidget(lbl_title)
 
-        v_sidebar.addSpacing(20)
+        v_sidebar.addSpacing(30)
 
         # 导航按钮
         self.btn_nav_enc = AnimatedSidebarButton("加密终端", "🔒", self)
@@ -444,6 +444,12 @@ class MainWindow(QMainWindow):
         self.btn_theme.clicked.connect(self.show_theme_selector)
         self.all_buttons.append(self.btn_theme)
         v_sidebar.addWidget(self.btn_theme)
+
+        # 版本信息
+        lbl_version = QLabel("v1.0 nexus")
+        lbl_version.setAlignment(Qt.AlignCenter)
+        lbl_version.setStyleSheet("color: #86868B; font-size: 10px;")
+        v_sidebar.addWidget(lbl_version)
 
         main_layout.addWidget(self.sidebar)
 
@@ -769,7 +775,7 @@ class MainWindow(QMainWindow):
         # 状态与控制
         # 状态显示区域
         status_container = QFrame()
-        status_container.setStyleSheet(f"background: {THEMES['Deep Space']['input_bg']}; border-radius: 8px; padding: 10px;")
+        status_container.setObjectName("StatusContainer")
         v_status = QVBoxLayout(status_container)
         v_status.setSpacing(8)
 
@@ -1023,89 +1029,111 @@ class MainWindow(QMainWindow):
         theme_name = self.theme_names[self.current_theme_idx]
         t = THEMES[theme_name]
         self.theme_data = t
-        self.btn_theme.setText(f"主题: {theme_name}")
+        self.btn_theme.setText(f"{theme_name}")
 
         qss = f"""
-        QMainWindow, QWidget {{
+        QMainWindow {{
             background-color: {t['bg']};
+        }}
+        QWidget {{
             color: {t['fg']};
-            font-family: 'Segoe UI', sans-serif;
+            font-family: -apple-system, 'SF Pro Text', 'Segoe UI', sans-serif;
         }}
         QFrame#Sidebar {{
             background-color: {t['sidebar']};
-            border-right: 1px solid {t['border']};
+            border: none;
         }}
         QLabel#AppTitle {{
             color: {t['fg']};
-            font-size: 16pt;
-            font-weight: bold;
+            font-size: 20px;
+            font-weight: 600;
+            letter-spacing: -0.5px;
         }}
         QFrame#ContentPanel {{
             background-color: {t['panel']};
             border: 1px solid {t['border']};
-            border-radius: 12px;
+            border-radius: 20px;
         }}
         QLabel#SectionTitle {{
-            color: {t['accent']};
-            font-size: 12pt;
-            font-weight: bold;
-            padding-bottom: 5px;
-            border-bottom: 2px solid {t['accent']};
+            color: {t['fg']};
+            font-size: 15px;
+            font-weight: 600;
+            padding-bottom: 10px;
+            border: none;
         }}
-        QLabel#StatusLabel {{
-            color: {t['text_sec']};
-            font-weight: bold;
-        }}
-        QLineEdit, QTextEdit {{
+        QLineEdit, QTextEdit, QComboBox {{
             background-color: {t['input_bg']};
             border: 1px solid {t['border']};
-            border-radius: 6px;
+            border-radius: 10px;
             color: {t['fg']};
-            padding: 8px;
+            padding: 10px 14px;
+            font-size: 14px;
         }}
-        QLineEdit:focus {{
-            border: 1px solid {t['accent']};
+        QLineEdit:focus, QComboBox:focus {{
+            border: 2px solid {t['accent']};
+            padding: 9px 13px;
+        }}
+        QComboBox::drop-down {{
+            border: none;
+            width: 30px;
+        }}
+        QComboBox::down-arrow {{
+            image: none;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-top: 7px solid {t['text_sec']};
+            margin-right: 10px;
         }}
         QGroupBox {{
-            border: 1px solid {t['border']};
-            border-radius: 8px;
-            margin-top: 10px;
-            color: {t['text_sec']};
+            border: none;
+            background-color: {t['input_bg']};
+            border-radius: 12px;
+            margin-top: 8px;
+            padding: 20px 16px 16px 16px;
+            color: {t['fg']};
+            font-weight: 600;
+            font-size: 13px;
+        }}
+        QGroupBox::title {{
+            subcontrol-origin: margin;
+            left: 16px;
+            top: 8px;
+            padding: 0 6px;
+        }}
+        QFrame#StatusContainer {{
+            background-color: {t['input_bg']};
+            border-radius: 12px;
+            padding: 12px;
         }}
         QListWidget {{
             background-color: {t['list_bg']};
             border: 1px solid {t['border']};
+            border-radius: 12px;
+            padding: 6px;
+        }}
+        QListWidget::item {{
             border-radius: 8px;
+            padding: 10px 12px;
+            margin: 2px 0px;
         }}
         QListWidget::item:selected {{
-            background-color: {t['accent']}33;
-            border-left: 3px solid {t['accent']};
+            background-color: {t['accent']};
+            color: white;
+        }}
+        QListWidget::item:hover {{
+            background-color: {t['input_bg']};
         }}
         QProgressBar {{
             background-color: {t['input_bg']};
-            border-radius: 3px;
+            border: none;
+            border-radius: 6px;
+            text-align: center;
+            font-weight: 500;
+            height: 8px;
         }}
         QProgressBar::chunk {{
             background-color: {t['accent']};
-        }}
-        QCheckBox {{
-            spacing: 8px;
-            color: {t['fg']};
-        }}
-        QCheckBox::indicator {{
-            width: 20px;
-            height: 20px;
-            border-radius: 4px;
-            border: 2px solid {t['border']};
-            background: {t['input_bg']};
-        }}
-        QCheckBox::indicator:hover {{
-            border-color: {t['accent']};
-        }}
-        QCheckBox::indicator:checked {{
-            background-color: {t['accent']};
-            border-color: {t['accent']};
-            image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M4 10 L8 14 L16 6' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+            border-radius: 6px;
         }}
         """
         self.setStyleSheet(qss)
@@ -1113,7 +1141,119 @@ class MainWindow(QMainWindow):
             btn.update_theme(t)
 
         for btn in self.sidebar_btns:
-            btn.update()  # 触发重绘
+            btn.update()
+
+        self.ui_enc["list"].update_theme(t)
+        self.ui_dec["list"].update_theme(t)
+
+        qss = f"""
+        QMainWindow, QWidget {{
+            background-color: {t['bg']};
+            color: {t['fg']};
+            font-family: 'SF Pro Text', 'Segoe UI', sans-serif;
+        }}
+        QFrame#Sidebar {{
+            background-color: {t['sidebar']};
+            border-right: 1px solid {t['border']};
+        }}
+        QLabel#AppTitle {{
+            color: {t['fg']};
+            font-size: 18pt;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+        }}
+        QFrame#ContentPanel {{
+            background-color: {t['panel']};
+            border: 1px solid {t['border']};
+            border-radius: 16px;
+        }}
+        QLabel#SectionTitle {{
+            color: {t['fg']};
+            font-size: 13pt;
+            font-weight: 600;
+            padding-bottom: 8px;
+            border-bottom: 2px solid {t['accent']};
+        }}
+        QLabel#StatusLabel {{
+            color: {t['text_sec']};
+            font-weight: 500;
+        }}
+        QLineEdit, QTextEdit, QComboBox {{
+            background-color: {t['input_bg']};
+            border: 1px solid {t['border']};
+            border-radius: 8px;
+            color: {t['fg']};
+            padding: 8px 12px;
+            font-size: 13px;
+        }}
+        QLineEdit:focus, QComboBox:focus {{
+            border: 2px solid {t['accent']};
+            padding: 7px 11px;
+        }}
+        QComboBox::drop-down {{
+            border: none;
+            width: 20px;
+        }}
+        QComboBox::down-arrow {{
+            image: none;
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
+            border-top: 6px solid {t['text_sec']};
+            margin-right: 8px;
+        }}
+        QGroupBox {{
+            border: 1px solid {t['border']};
+            border-radius: 10px;
+            margin-top: 12px;
+            padding-top: 12px;
+            color: {t['fg']};
+            font-weight: 500;
+        }}
+        QGroupBox::title {{
+            subcontrol-origin: margin;
+            left: 12px;
+            padding: 0 8px;
+        }}
+        QFrame#StatusContainer {{
+            background-color: {t['input_bg']};
+            border-radius: 8px;
+            padding: 10px;
+        }}
+        QListWidget {{
+            background-color: {t['list_bg']};
+            border: 1px solid {t['border']};
+            border-radius: 10px;
+            padding: 4px;
+        }}
+        QListWidget::item {{
+            border-radius: 6px;
+            padding: 8px;
+            margin: 2px;
+        }}
+        QListWidget::item:selected {{
+            background-color: {t['accent']};
+            color: white;
+        }}
+        QListWidget::item:hover {{
+            background-color: {t['input_bg']};
+        }}
+        QProgressBar {{
+            background-color: {t['input_bg']};
+            border-radius: 4px;
+            text-align: center;
+            font-weight: 500;
+        }}
+        QProgressBar::chunk {{
+            background-color: {t['accent']};
+            border-radius: 4px;
+        }}
+        """
+        self.setStyleSheet(qss)
+        for btn in self.all_buttons:
+            btn.update_theme(t)
+
+        for btn in self.sidebar_btns:
+            btn.update()
 
         self.ui_enc["list"].update_theme(t)
         self.ui_dec["list"].update_theme(t)

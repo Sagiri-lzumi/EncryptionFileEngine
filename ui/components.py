@@ -100,8 +100,9 @@ class ThemeSelector(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint)
+        self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WA_DeleteOnClose, False)
         self.theme_buttons = []
         self._is_visible = False
         self._bg_opacity = 0.0
@@ -136,6 +137,7 @@ class ThemeSelector(QWidget):
 
     def on_theme_clicked(self, theme_name):
         """主题被点击"""
+        self._is_visible = False  # 先设置为false防止focusOutEvent触发
         self.theme_selected.emit(theme_name)
         self.hide_animated()
 
@@ -143,6 +145,8 @@ class ThemeSelector(QWidget):
         """在指定位置显示"""
         self.move(pos)
         self.show()
+        self.activateWindow()
+        self.setFocus()
         self._is_visible = True
 
         # 背景淡入
@@ -169,6 +173,12 @@ class ThemeSelector(QWidget):
         # 按钮隐藏
         for btn in reversed(self.theme_buttons):
             btn.hide_animated()
+
+    def focusOutEvent(self, event):
+        """失去焦点时关闭"""
+        if self._is_visible:
+            self.hide_animated()
+        super().focusOutEvent(event)
 
     def paintEvent(self, event):
         """绘制半透明背景"""

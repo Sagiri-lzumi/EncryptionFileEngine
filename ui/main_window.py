@@ -562,7 +562,7 @@ class MainWindow(QMainWindow):
         page = QWidget()
         # 使用 Splitter 允许用户调整左右比例
         splitter = QSplitter(Qt.Horizontal)
-        splitter.setHandleWidth(1)
+        splitter.setHandleWidth(2)
 
         # === 左侧：文件列表 (Card) ===
         left_container = QFrame()
@@ -593,7 +593,7 @@ class MainWindow(QMainWindow):
 
         # 按钮栏
         btn_bar = QHBoxLayout()
-        btn_bar.setSpacing(10)
+        btn_bar.setSpacing(12)
 
         btn_add = ModernButton("➕ 添加文件", "normal")
         btn_add.clicked.connect(lambda: self.action_add_file(is_encrypt))
@@ -624,8 +624,8 @@ class MainWindow(QMainWindow):
         # === 右侧：配置面板 (Card) ===
         right_container = QFrame()
         right_container.setObjectName("ContentPanel")
-        right_container.setMinimumWidth(380)
-        right_container.setMaximumWidth(450)
+        right_container.setMinimumWidth(360)
+        right_container.setMaximumWidth(480)
 
         v_right = QVBoxLayout(right_container)
         v_right.setContentsMargins(20, 20, 20, 20)
@@ -638,8 +638,8 @@ class MainWindow(QMainWindow):
         # 1. 安全设置
         grp_sec = QGroupBox("安全凭证")
         v_sec = QVBoxLayout(grp_sec)
-        v_sec.setSpacing(10)
-        v_sec.setContentsMargins(15, 20, 15, 15)
+        v_sec.setSpacing(12)
+        v_sec.setContentsMargins(16, 16, 16, 16)
 
         # 老系统：密码输入
         self.old_sec_widget = QWidget() if is_encrypt else QWidget()
@@ -682,8 +682,8 @@ class MainWindow(QMainWindow):
         # 2. 输出设置
         grp_io = QGroupBox("输出路径")
         v_io = QVBoxLayout(grp_io)
-        v_io.setSpacing(10)
-        v_io.setContentsMargins(15, 20, 15, 15)
+        v_io.setSpacing(12)
+        v_io.setContentsMargins(16, 16, 16, 16)
 
         h_path = QHBoxLayout()
         txt_path = QLineEdit()
@@ -736,13 +736,14 @@ class MainWindow(QMainWindow):
         # 3. 高级选项
         grp_adv = QGroupBox("高级策略")
         v_adv = QVBoxLayout(grp_adv)
-        v_adv.setSpacing(10)
-        v_adv.setContentsMargins(15, 20, 15, 15)
+        v_adv.setSpacing(12)
+        v_adv.setContentsMargins(16, 16, 16, 16)
 
         h_ssd = QHBoxLayout()
         txt_ssd = QLineEdit()
         txt_ssd.setPlaceholderText("请先选择缓存路径 ->")
         txt_ssd.setReadOnly(True)
+        txt_ssd.setMinimumHeight(36)
         h_ssd.addWidget(txt_ssd)
 
         btn_ssd = ModernButton("选择缓存", "normal")
@@ -777,6 +778,7 @@ class MainWindow(QMainWindow):
         status_container = QFrame()
         status_container.setObjectName("StatusContainer")
         v_status = QVBoxLayout(status_container)
+        v_status.setContentsMargins(0, 0, 0, 0)
         v_status.setSpacing(8)
 
         lbl_status = QLabel("就绪")
@@ -1084,15 +1086,15 @@ class MainWindow(QMainWindow):
         QGroupBox {{
             border: 1px solid {t['border']};
             border-radius: 10px;
-            margin-top: 12px;
-            padding-top: 20px;
+            margin-top: 10px;
+            padding: 18px 16px 16px 16px;
             font-weight: 600;
             font-size: 13px;
             color: {t['fg']};
         }}
         QGroupBox::title {{
             subcontrol-origin: margin;
-            left: 12px;
+            left: 10px;
             padding: 0 6px;
         }}
         QFrame#StatusContainer {{

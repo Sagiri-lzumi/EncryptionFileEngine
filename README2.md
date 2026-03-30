@@ -17,7 +17,6 @@
    - 5.1 [main.py — 应用入口](#51-mainpy--应用入口)
    - 5.2 [config.py — 全局配置](#52-configpy--全局配置)
    - 5.3 [core/file_cipher.py — 文件加密引擎](#53-corefilecipherpy--文件加密引擎)
-   - 5.4 [core/text_cipher.py — 文本加密工具箱](#54-coretextcipherpy--文本加密工具箱)
    - 5.5 [core/auth.py — 用户认证服务](#55-coreauthpy--用户认证服务)
    - 5.6 [core/logger.py — 日志系统](#56-coreloggerpy--日志系统)
    - 5.7 [ui/splash.py — 启动动画](#57-uisplashpy--启动动画)
@@ -55,10 +54,8 @@
 | `Python` | ≥ 3.10.10 | 运行环境 |
 | `PySide6` | 最新稳定版 | GUI 框架（Qt6 绑定） |
 | `cryptography` | 最新稳定版 | 文件加密核心（AES-256-CBC），`FileCipherEngine` 专用 |
-| `pycryptodome` | 最新稳定版 | 文本加密工具（AES/DES/TripleDES/RC4），`TextCipher` 专用 |
 | `colorama` | 可选 | 控制台日志彩色输出（安全降级，无此库也可正常运行） |
 
-> **注意**：文件加密（`core/file_cipher.py`）使用 `cryptography` 库；文本加密（`core/text_cipher.py`）使用 `pycryptodome` 库（`Crypto.*` 命名空间）。两者不可互换，需**同时安装**。
 
 ---
 
@@ -73,7 +70,6 @@ EncryptionFileEngine/
 ├── core/                    # 📦 核心业务逻辑层
 │   ├── __init__.py          #   空文件（包标识，未导出公开 API）
 │   ├── file_cipher.py       # 文件加密引擎（AES-256-CBC，约 130 行）
-│   ├── text_cipher.py       # 文本多算法加密工具箱（约 45 行，⚠️ 仅加密，无解密方法）
 │   ├── auth.py              # 用户认证服务，JSON 文件数据库（约 25 行）
 │   └── logger.py            # 全局日志系统，单例模式，带轮转（约 120 行）
 │
@@ -129,12 +125,9 @@ core/auth.py
 
 core/logger.py
  └── config.py  (DIRS)
-
-core/text_cipher.py
- └── pycryptodome  (Crypto.*)  ← 独立，不与其他核心模块交互
 ```
 
-> **关键点**：`core/text_cipher.py` 与其他核心模块**完全解耦**，仅在 UI 层被调用。`core/logger.py` 是被所有模块引用的基础设施，通过模块级单例 `sys_logger` 共享。
+> **关键点**：`core/logger.py` 是被所有模块引用的基础设施，通过模块级单例 `sys_logger` 共享。
 
 ---
 
@@ -297,55 +290,6 @@ enc_fname_data = name_enc.update(name_pad.update(fname_bytes)) \
 ```
 
 > **设计说明**：复用 IV 节省了头部存储空间，但这意味着"文件名密文"和"文件内容密文"共享同一 IV。由于 CBC 模式下相同 IV + 相同明文会产生相同密文，若文件名不变而内容改变，文件名密文也不变——这在实际使用中是可接受的。
-
----
-
-### 5.4 `core/text_cipher.py` — 文本加密工具箱
-
-**代码行数**：约 45 行  
-**核心类**：`TextCipher`（全静态方法，无需实例化）  
-**依赖**：`pycryptodome` 库（`Crypto.*` 命名空间）
-
-> ⚠️ **重要限制**：当前版本 `TextCipher` **只有加密方法，没有解密方法**。`encrypt()` 和 `hash_encoding()` 均为单向或无配套解密实现，文本加密在当前版本中是**不可逆的**（从 UI 使用角度来看）。
-
-#### 支持的加密算法
-
-| 算法 | 密钥长度 | 模式 | IV 长度 | 说明 |
-|------|----------|------|---------|------|
-| `AES` | 32 字节（256位） | CBC | 16 字节 | 最强，推荐使用 |
-| `DES` | 8 字节（64位） | CBC | 8 字节 | 老旧标准，已不安全，仅做兼容 |
-| `TripleDES` | 24 字节（192位） | CBC | 8 字节 | DES 的加强版 |
-| `RC4` | 16 字节（128位） | 流加密 | 无 IV | 速度极快，无 IV，安全性较低 |
-
-#### 支持的哈希/编码
-
-| 方法 | 类型 | 说明 |
-|------|------|------|
-| `Base64` | 编码（可逆） | 标准 Base64 编码 |
-| `MD5` | 哈希（不可逆） | 128位摘要，不可用于安全存储密码 |
-| `SHA256` | 哈希（不可逆） | 256位摘要，安全强度较高 |
-
-#### 密钥派生机制
-
-所有加密算法共用同一个密钥派生函数：
-
-```python
-@staticmethod
-def _get_key(user_key: str, length: int) -> bytes:
-    # 用 SHA-256 对用户输入做哈希，然后截取所需长度
-    return hashlib.sha256(user_key.encode()).digest()[:length]
-```
-
-> **安全提示**：这是一个极简的密钥派生实现，无盐值，无迭代。生产环境中应使用 `PBKDF2` 或 `Argon2` 等专用 KDF 并加盐，以抵御彩虹表和暴力破解攻击。
-
-#### 加密输出格式
-
-| 算法 | 输出格式 |
-|------|---------|
-| AES / DES / TripleDES | `Base64( IV + 密文 )` |
-| RC4 | `Base64( 密文 )`（无 IV） |
-
-CBC 模式的 IV 被拼接在密文前，整体再做 Base64 编码输出为字符串。IV 由 `pycryptodome` 的 `get_random_bytes()` 生成，每次加密唯一。
 
 ---
 

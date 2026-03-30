@@ -21,7 +21,6 @@ pip install pycryptodome>=3.18.0
 |------|---------|------|
 | PySide6 | >=6.0.0 | Qt6 GUI 框架，用于构建用户界面 |
 | cryptography | >=41.0.0 | 加密库，提供 RSA、AES 加密功能 |
-| pycryptodome | >=3.18.0 | 加密库，提供 AES、DES、DES3、ARC4 等多种加密算法 |
 
 ## 安装步骤
 
@@ -53,7 +52,7 @@ source .venv/bin/activate
 ### 4. 安装依赖
 
 ```bash
-pip install PySide6 cryptography pycryptodome
+pip install PySide6 cryptography
 ```
 
 或使用 requirements.txt（如果提供）:
@@ -77,7 +76,6 @@ EncryptionFileEngine/
 │   ├── auth.py         # 用户认证
 │   ├── file_cipher.py  # 文件加密引擎
 │   ├── rsa_cipher.py   # RSA 密钥管理
-│   ├── text_cipher.py  # 文本加密
 │   └── logger.py       # 日志模块
 ├── ui/                  # 用户界面
 │   ├── login.py        # 登录界面
@@ -96,10 +94,10 @@ EncryptionFileEngine/
 A: 确保已激活虚拟环境并安装了 PySide6：`pip install PySide6`
 
 ### Q: 提示 "No module named 'Crypto'"
-A: 需要安装 pycryptodome：`pip install pycryptodome`
+A: 需要安装 cryptography：`pip install cryptography`
 
 ### Q: 加密功能报错
-A: 检查加密库是否正确安装：`pip install --upgrade cryptography pycryptodome`
+A: 检查加密库是否正确安装：`pip install --upgrade cryptography`
 
 ### Q: Windows 下无法运行
 A: 确保使用管理员权限或检查防火墙设置
@@ -141,7 +139,6 @@ pip install Nuitka
 ```
 PySide6>=6.7.0
 cryptography>=46.0.0
-pycryptodome>=3.23.0
 ```
 
 **开发依赖 (requirements-dev.txt):**

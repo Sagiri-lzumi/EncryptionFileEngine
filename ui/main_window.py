@@ -366,8 +366,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("File Security Engine Enterprise")
-        self.resize(1280, 800)
-        self.setMinimumSize(1100, 650)
+        self.setFixedSize(1280, 880)
 
         self.theme_names = list(THEMES.keys())
         self.current_theme_idx = 0  # 默认Light主题

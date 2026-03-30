@@ -1,0 +1,4 @@
+pyinstaller>=6.17.0
+pyinstaller-hooks-contrib>=2025.10
+cx_Freeze>=8.5.0
+Nuitka>=2.8.9

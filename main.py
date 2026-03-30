@@ -15,11 +15,9 @@ def main():
     multiprocessing.freeze_support()
 
     # 2. 提示 Windows 这是一个独立的应用程序
-    try:
+    if sys.platform == 'win32':
         myappid = 'security.fileengine.cipher.1.0'
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-    except ImportError:
-        pass
 
     init_directories()
     app = QApplication(sys.argv)

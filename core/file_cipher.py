@@ -6,8 +6,17 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import padding
 
+from core.logger import sys_logger
+
 
 class FileCipherEngine:
+    @staticmethod
+    def _cleanup_partial_output(output_path):
+        if output_path and os.path.exists(output_path):
+            try:
+                os.remove(output_path)
+            except OSError as exc:
+                sys_logger.log(f"清理中间文件失败: {output_path} ({exc})", "warning")
 
     def _get_smart_chunk_size(self, file_size):
         """根据文件大小智能调整分块大小"""
@@ -103,8 +112,9 @@ class FileCipherEngine:
 
                             dec_name_bytes = name_dec.update(enc_fname_data) + name_dec.finalize()
                             orig_name = (name_unpad.update(dec_name_bytes) + name_unpad.finalize()).decode('utf-8')
-                        except:
-                            return False, "密钥错误", ""
+                        except (ValueError, UnicodeDecodeError) as exc:
+                            sys_logger.log(f"文件名元数据解密失败: {file_path} ({exc})", "warning")
+                            return False, "密钥错误或文件名元数据损坏", ""
 
                         # 【核心】忽略传入的 target_path 文件名，强制恢复原名
                         final_out_path = os.path.join(target_dir, orig_name)
@@ -142,18 +152,16 @@ class FileCipherEngine:
                     except ValueError:
                         return False, "数据损坏或填充错误", ""
                     except Exception as e:
+                        sys_logger.log(f"文件解密异常: {file_path} ({e})", "error")
                         return False, f"解密异常: {str(e)}", ""
 
                 return True, "解密成功", final_out_path
 
         except InterruptedError:
-            if os.path.exists(final_out_path):
-                try: os.remove(final_out_path)
-                except: pass
+            self._cleanup_partial_output(final_out_path)
             return False, "用户停止", ""
 
         except Exception as e:
-            if os.path.exists(final_out_path):
-                try: os.remove(final_out_path)
-                except: pass
+            self._cleanup_partial_output(final_out_path)
+            sys_logger.log(f"文件处理失败: {file_path} ({e})", "error")
             return False, str(e), ""

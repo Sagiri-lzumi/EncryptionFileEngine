@@ -73,17 +73,21 @@ EncryptionFileEngine/
 ├── main.py              # 程序入口
 ├── config.py            # 配置文件
 ├── core/                # 核心加密模块
-│   ├── auth.py         # 用户认证
 │   ├── file_cipher.py  # 文件加密引擎
 │   ├── rsa_cipher.py   # RSA 密钥管理
+│   ├── text_cipher.py  # 文本加密与兼容派生
 │   └── logger.py       # 日志模块
 ├── ui/                  # 用户界面
-│   ├── login.py        # 登录界面
 │   ├── main_window.py  # 主窗口
 │   ├── splash.py       # 启动画面
 │   ├── themes.py       # 主题配置
 │   ├── components.py   # UI 组件
+│   ├── platform_fonts.py # 跨平台字体选择
 │   └── utils.py        # UI 工具函数
+├── Test/                # 自动化测试
+│   ├── run_all_tests.py
+│   ├── generate_test_data.py
+│   └── test_*.py
 ├── Keys/                # 密钥存储目录
 └── Logs/                # 日志目录
 ```

@@ -3,6 +3,8 @@ from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, Propert
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPainterPath, QRegion
 import math
 
+from ui.platform_fonts import get_system_font_family
+
 
 class IntroScreen(QSplashScreen):
     def __init__(self):
@@ -113,11 +115,11 @@ class IntroScreen(QSplashScreen):
 
         # 标题
         painter.setPen(QColor("#1D1D1F"))
-        painter.setFont(QFont("Segoe UI", 22, QFont.Bold))
+        painter.setFont(QFont(get_system_font_family(), 22, QFont.Bold))
         painter.drawText(0, h // 2 + 10, w, 40, Qt.AlignCenter, "Encryption Studio")
 
         # 加载文本
-        painter.setFont(QFont("Segoe UI", 10))
+        painter.setFont(QFont(get_system_font_family(), 10))
         painter.setPen(QColor("#86868B"))
         painter.drawText(0, h // 2 + 50, w, 30, Qt.AlignCenter, self.loading_text)
 

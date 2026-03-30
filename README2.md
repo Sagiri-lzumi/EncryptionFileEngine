@@ -17,10 +17,11 @@
    - 5.1 [main.py — 应用入口](#51-mainpy--应用入口)
    - 5.2 [config.py — 全局配置](#52-configpy--全局配置)
    - 5.3 [core/file_cipher.py — 文件加密引擎](#53-corefilecipherpy--文件加密引擎)
-   - 5.5 [core/auth.py — 用户认证服务](#55-coreauthpy--用户认证服务)
+   - 5.4 [core/rsa_cipher.py — RSA 混合加密](#54-corersa_cipherpy--rsa-混合加密)
+   - 5.5 [core/text_cipher.py — 文本加密与兼容派生](#55-coretext_cipherpy--文本加密与兼容派生)
    - 5.6 [core/logger.py — 日志系统](#56-coreloggerpy--日志系统)
    - 5.7 [ui/splash.py — 启动动画](#57-uisplashpy--启动动画)
-   - 5.8 [ui/login.py — 登录对话框](#58-uiloginpy--登录对话框)
+   - 5.8 [ui/platform_fonts.py — 跨平台字体适配](#58-uiplatform_fontspy--跨平台字体适配)
    - 5.9 [ui/main_window.py — 主窗口](#59-uimainwindowpy--主窗口)
 6. [加密文件格式规范](#6-加密文件格式规范)
 7. [加密与解密完整流程](#7-加密与解密完整流程)
@@ -70,17 +71,24 @@ EncryptionFileEngine/
 ├── core/                    # 📦 核心业务逻辑层
 │   ├── __init__.py          #   空文件（包标识，未导出公开 API）
 │   ├── file_cipher.py       # 文件加密引擎（AES-256-CBC，约 130 行）
-│   ├── auth.py              # 用户认证服务，JSON 文件数据库（约 25 行）
+│   ├── rsa_cipher.py        # RSA 混合加密与密钥管理
+│   ├── text_cipher.py       # 文本加密、编码和新旧密钥派生兼容
 │   └── logger.py            # 全局日志系统，单例模式，带轮转（约 120 行）
 │
 ├── ui/                      # 🎨 用户界面层
 │   ├── __init__.py          #   空文件（包标识，未导出公开 API）
 │   ├── splash.py            # 启动动画画面（IntroScreen，约 95 行）
-│   ├── login.py             # 登录对话框（⚠️ 已实现但未集成到主流程）
+│   ├── platform_fonts.py    # 跨平台字体选择工具
 │   └── main_window.py       # 主窗口（5 个核心类 + 6 个工具函数，约 700 行）
 │
-├── Keys/                    # 🔑 密钥与用户数据库存储目录（运行时自动创建）
-│   └── users.json           #   用户账号数据库（⚠️ 明文 JSON，待改进）
+├── Test/                    # ✅ 自动化测试目录
+│   ├── data/                #   测试数据样本
+│   ├── output/              #   测试输出目录
+│   ├── generate_test_data.py
+│   ├── run_all_tests.py
+│   └── test_*.py
+│
+├── Keys/                    # 🔑 密钥存储目录（运行时自动创建）
 │
 ├── Logs/                    # 📋 日志文件目录（运行时自动创建）
 │   └── Encrypt_YYYYMMDD_HHmmss.log  # 带秒级时间戳的日志文件
@@ -117,11 +125,9 @@ main.py
  └── ui/main_window.py  (MainWindow)
        ├── config.py  (DIRS)
        ├── core/file_cipher.py  (FileCipherEngine)  ← 依赖 cryptography
+       ├── core/rsa_cipher.py  (RSAFileCipher / RSAKeyManager)
+       ├── core/text_cipher.py (TextCipher)
        └── core/logger.py  (sys_logger)
-
-core/auth.py
- ├── config.py  (DIRS)
- └── core/logger.py  (sys_logger)
 
 core/logger.py
  └── config.py  (DIRS)
@@ -171,6 +177,7 @@ main()
 - `QThread.msleep(10)` + `app.processEvents()` 确保启动动画在主线程正常渲染，不卡顿
 - 图标加载做了 `os.path.exists` 检查，不会因图标文件丢失而崩溃
 - `multiprocessing.freeze_support()` 必须在 `QApplication` 初始化之前调用，否则 PyInstaller 打包后的 Windows 多进程会反复触发入口函数
+- 登录验证模块已移除，当前启动流程固定直接进入 `MainWindow`
 
 ---
 

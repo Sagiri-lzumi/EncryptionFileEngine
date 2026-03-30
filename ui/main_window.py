@@ -4,8 +4,11 @@ import hashlib
 import multiprocessing
 import shutil
 import base64
-from concurrent.futures import ProcessPoolExecutor
+import binascii
+import threading
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from datetime import datetime
+from queue import Queue, Empty
 
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QLabel, QFileDialog,
@@ -24,6 +27,7 @@ from core.file_cipher import FileCipherEngine
 from core.logger import sys_logger
 from ui.themes import THEMES
 from ui.components import AnimatedSidebarButton, ModernButton, DragDropListWidget, CustomCheckBox, ThemeSelector
+from ui.platform_fonts import get_monospace_font_qss, get_system_font_family, get_system_font_qss
 from ui.utils import ensure_long_path, format_size, get_drive_root
 
 
@@ -36,7 +40,7 @@ def encrypt_dir_name_str(dir_name):
         if dir_name.startswith(ENC_PREFIX): return dir_name
         encoded = base64.urlsafe_b64encode(dir_name.encode()).decode()
         return f"{ENC_PREFIX}{encoded}"
-    except:
+    except (UnicodeEncodeError, ValueError):
         return dir_name
 
 
@@ -45,7 +49,7 @@ def decrypt_dir_name_str(dir_name):
         try:
             encoded = dir_name[len(ENC_PREFIX):]
             return base64.urlsafe_b64decode(encoded.encode()).decode()
-        except:
+        except (binascii.Error, UnicodeDecodeError, ValueError):
             return dir_name
     return dir_name
 
@@ -103,12 +107,41 @@ class BatchWorkerThread(QThread):
         self.encrypt_dirname = encrypt_dirname
         self.use_ssd = use_ssd
         self.ssd_dir = ssd_dir
-        self.manager = multiprocessing.Manager()
-        self.queue = self.manager.Queue()
-        self.stop_event = self.manager.Event()
-        self.pause_event = self.manager.Event()
-        self.pause_event.set()
+        self.manager = None
+        self.queue = None
+        self.stop_event = None
+        self.pause_event = None
+        self.executor_class = ProcessPoolExecutor
+        self.parallel_mode = "process"
+        self._ipc_init_error = ""
         self._is_running = True
+        self._init_ipc()
+
+    def _init_ipc(self):
+        try:
+            self.manager = multiprocessing.Manager()
+            self.queue = self.manager.Queue()
+            self.stop_event = self.manager.Event()
+            self.pause_event = self.manager.Event()
+            self.executor_class = ProcessPoolExecutor
+            self.parallel_mode = "process"
+        except Exception as exc:
+            self.manager = None
+            self.queue = Queue()
+            self.stop_event = threading.Event()
+            self.pause_event = threading.Event()
+            self.executor_class = ThreadPoolExecutor
+            self.parallel_mode = "thread"
+            self._ipc_init_error = str(exc)
+        self.pause_event.set()
+
+    def _shutdown_ipc(self):
+        if self.manager is not None:
+            try:
+                self.manager.shutdown()
+            except (BrokenPipeError, EOFError, OSError):
+                pass
+            self.manager = None
 
     def pause(self):
         self.pause_event.clear()
@@ -121,185 +154,187 @@ class BatchWorkerThread(QThread):
         self._is_running = False
 
     def run(self):
-        key_bytes = hashlib.sha256(self.key.encode()).digest()
-        results = {"success": [], "fail": []}
-        valid_files = []
-        total_bytes = 0
-        self.processed_bytes_map = {}
-        common_base = ""
+        try:
+            key_bytes = hashlib.sha256(self.key.encode()).digest()
+            results = {"success": [], "fail": []}
+            valid_files = []
+            total_bytes = 0
+            self.processed_bytes_map = {}
+            common_base = ""
 
-        if self.keep_structure and len(self.files) > 0:
-            try:
-                common_base = os.path.commonpath(self.files)
-                if os.path.isfile(common_base): common_base = os.path.dirname(common_base)
-            except:
-                pass
+            if self.parallel_mode == "thread" and self._ipc_init_error:
+                self.sig_log.emit(f"⚠️ 多进程通信初始化失败，已降级为线程池模式: {self._ipc_init_error}")
 
-        self.sig_log.emit("--- 正在扫描任务队列 ---")
-        for f in self.files:
-            # 修复点：检查文件存在时使用长路径
-            f_long = ensure_long_path(f)
-            if os.path.exists(f_long):
-                # 再次确认不是文件夹（虽然拖拽逻辑已过滤，但双重保险）
-                if os.path.isfile(f_long):
-                    s = os.path.getsize(f_long)
-                    total_bytes += s
-                    valid_files.append(f)
-                    self.processed_bytes_map[f] = 0
-            else:
-                results["fail"].append((f, "文件不存在"))
+            if self.keep_structure and len(self.files) > 0:
+                try:
+                    common_base = os.path.commonpath(self.files)
+                    if os.path.isfile(common_base): common_base = os.path.dirname(common_base)
+                except (ValueError, OSError):
+                    pass
 
-        if not valid_files:
-            self.sig_finished.emit(results)
-            return
+            self.sig_log.emit("--- 正在扫描任务队列 ---")
+            for f in self.files:
+                f_long = ensure_long_path(f)
+                if os.path.exists(f_long):
+                    if os.path.isfile(f_long):
+                        s = os.path.getsize(f_long)
+                        total_bytes += s
+                        valid_files.append(f)
+                        self.processed_bytes_map[f] = 0
+                else:
+                    results["fail"].append((f, "文件不存在"))
 
-        temp_stage_root = None
-        working_root_base = None
+            if not valid_files:
+                self.sig_finished.emit(results)
+                return
 
-        if self.use_ssd and self.ssd_dir:
-            try:
-                drive_root = get_drive_root(self.ssd_dir)
-                # 修复点：SSD 临时目录使用长路径
-                temp_stage_root = os.path.join(drive_root, "_SSD_ENCRYPT_STAGE_TEMP")
-                temp_stage_root = ensure_long_path(temp_stage_root)
+            temp_stage_root = None
+            working_root_base = None
 
-                usage = shutil.disk_usage(self.ssd_dir)
-                required = total_bytes * 1.2
-                if usage.free < required:
-                    self.sig_log.emit(f"⚠️ SSD 空间不足! 需 {format_size(required)}, 余 {format_size(usage.free)}")
+            if self.use_ssd and self.ssd_dir:
+                try:
+                    drive_root = get_drive_root(self.ssd_dir)
+                    temp_stage_root = os.path.join(drive_root, "_SSD_ENCRYPT_STAGE_TEMP")
+                    temp_stage_root = ensure_long_path(temp_stage_root)
+
+                    usage = shutil.disk_usage(self.ssd_dir)
+                    required = total_bytes * 1.2
+                    if usage.free < required:
+                        self.sig_log.emit(f"⚠️ SSD 空间不足! 需 {format_size(required)}, 余 {format_size(usage.free)}")
+                        self.use_ssd = False
+                        working_root_base = self.custom_out
+                    else:
+                        self.sig_log.emit(f"✅ [SSD 加速] 已启用。暂存区: {temp_stage_root}")
+                        if os.path.exists(temp_stage_root): shutil.rmtree(temp_stage_root, ignore_errors=True)
+                        os.makedirs(temp_stage_root, exist_ok=True)
+                        working_root_base = temp_stage_root
+                except Exception as e:
+                    self.sig_log.emit(f"❌ SSD 检测出错: {e}, 已禁用加速")
                     self.use_ssd = False
                     working_root_base = self.custom_out
-                else:
-                    self.sig_log.emit(f"✅ [SSD 加速] 已启用。暂存区: {temp_stage_root}")
-                    if os.path.exists(temp_stage_root): shutil.rmtree(temp_stage_root, ignore_errors=True)
-                    os.makedirs(temp_stage_root, exist_ok=True)
-                    working_root_base = temp_stage_root
-            except Exception as e:
-                self.sig_log.emit(f"❌ SSD 检测出错: {e}, 已禁用加速")
-                self.use_ssd = False
+            else:
                 working_root_base = self.custom_out
-        else:
-            working_root_base = self.custom_out
 
-        max_workers = min(os.cpu_count(), len(valid_files))
-        if self.use_ssd: max_workers = max(max_workers, 4)
-        self.sig_log.emit(f"🚀 启动 {max_workers} 个加密核心...")
+            max_workers = min(os.cpu_count() or 1, len(valid_files))
+            if self.use_ssd:
+                max_workers = max(max_workers, 4)
+            self.sig_log.emit(f"🚀 启动 {max_workers} 个{'进程' if self.parallel_mode == 'process' else '线程'}核心...")
 
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            futures = []
-            for f_path in valid_files:
-                if not self.use_ssd and not self.custom_out:
-                    current_base = os.path.dirname(f_path)
-                else:
-                    current_base = working_root_base
+            with self.executor_class(max_workers=max_workers) as executor:
+                futures = []
+                for f_path in valid_files:
+                    if not self.use_ssd and not self.custom_out:
+                        current_base = os.path.dirname(f_path)
+                    else:
+                        current_base = working_root_base
 
-                rel_path_struct = ""
-                if self.keep_structure and common_base:
-                    try:
-                        rel = os.path.relpath(os.path.dirname(f_path), common_base)
-                        if rel == ".": rel = ""
-                        parts = rel.split(os.sep)
-                        processed_parts = []
-                        for p in parts:
-                            if not p: continue
-                            if self.is_enc:
-                                processed_parts.append(encrypt_dir_name_str(p) if self.encrypt_dirname else p)
-                            else:
-                                processed_parts.append(decrypt_dir_name_str(p))
-                        rel_path_struct = os.sep.join(processed_parts)
-                    except:
-                        rel_path_struct = ""
-
-                final_out_dir = os.path.join(current_base, rel_path_struct)
-                fname = os.path.basename(f_path)
-                target_file_path = os.path.join(final_out_dir, fname + ".enc" if self.is_enc else fname)
-
-                futures.append(executor.submit(
-                    task_wrapper, f_path, target_file_path, key_bytes, self.is_enc, self.enc_name,
-                    self.queue, self.stop_event, self.pause_event
-                ))
-
-            finished_count = 0
-            prog_factor = 0.6 if self.use_ssd else 1.0
-
-            while finished_count < len(valid_files) and self._is_running:
-                try:
-                    while not self.queue.empty():
-                        msg_type, *data = self.queue.get_nowait()
-                        if msg_type == "PROGRESS":
-                            fp, curr, _ = data
-                            self.processed_bytes_map[fp] = curr
-                except:
-                    pass
-                QThread.msleep(50)
-                done = sum(self.processed_bytes_map.values())
-                if total_bytes > 0:
-                    pct = int((done / total_bytes) * 100 * prog_factor)
-                    self.sig_progress.emit(f"正在处理... {pct}%", pct)
-
-                done_futures = [f for f in futures if f.done()]
-                if len(done_futures) > finished_count:
-                    for f in done_futures:
-                        if getattr(f, '_handled', False): continue
-                        f._handled = True
-                        finished_count += 1
+                    rel_path_struct = ""
+                    if self.keep_structure and common_base:
                         try:
-                            fp, success, msg, outp = f.result()
-                            if success:
-                                results["success"].append((fp, outp))
-                                self.sig_log.emit(f"✅ {os.path.basename(fp)}")
+                            rel = os.path.relpath(os.path.dirname(f_path), common_base)
+                            if rel == ".": rel = ""
+                            parts = rel.split(os.sep)
+                            processed_parts = []
+                            for p in parts:
+                                if not p: continue
+                                if self.is_enc:
+                                    processed_parts.append(encrypt_dir_name_str(p) if self.encrypt_dirname else p)
+                                else:
+                                    processed_parts.append(decrypt_dir_name_str(p))
+                            rel_path_struct = os.sep.join(processed_parts)
+                        except (ValueError, OSError):
+                            rel_path_struct = ""
+
+                    final_out_dir = os.path.join(current_base, rel_path_struct)
+                    fname = os.path.basename(f_path)
+                    target_file_path = os.path.join(final_out_dir, fname + ".enc" if self.is_enc else fname)
+
+                    futures.append(executor.submit(
+                        task_wrapper, f_path, target_file_path, key_bytes, self.is_enc, self.enc_name,
+                        self.queue, self.stop_event, self.pause_event
+                    ))
+
+                finished_count = 0
+                prog_factor = 0.6 if self.use_ssd else 1.0
+
+                while finished_count < len(valid_files) and self._is_running:
+                    try:
+                        while not self.queue.empty():
+                            msg_type, *data = self.queue.get_nowait()
+                            if msg_type == "PROGRESS":
+                                fp, curr, _ = data
+                                self.processed_bytes_map[fp] = curr
+                    except Empty:
+                        pass
+                    QThread.msleep(50)
+                    done = sum(self.processed_bytes_map.values())
+                    if total_bytes > 0:
+                        pct = int((done / total_bytes) * 100 * prog_factor)
+                        self.sig_progress.emit(f"正在处理... {pct}%", pct)
+
+                    done_futures = [f for f in futures if f.done()]
+                    if len(done_futures) > finished_count:
+                        for f in done_futures:
+                            if getattr(f, '_handled', False): continue
+                            f._handled = True
+                            finished_count += 1
+                            try:
+                                fp, success, msg, outp = f.result()
+                                if success:
+                                    results["success"].append((fp, outp))
+                                    self.sig_log.emit(f"✅ {os.path.basename(fp)}")
+                                else:
+                                    results["fail"].append((fp, msg))
+                                    self.sig_log.emit(f"❌ {os.path.basename(fp)}: {msg}")
+                            except Exception as e:
+                                self.sig_log.emit(f"❌ 异常: {e}")
+
+                if not self._is_running:
+                    executor.shutdown(wait=False, cancel_futures=True)
+
+            if self.use_ssd and self._is_running and temp_stage_root:
+                self.sig_log.emit("--- ⚡ SSD 高速回写 ---")
+                try:
+                    final_dest_root = self.custom_out
+                    if not final_dest_root: final_dest_root = common_base if common_base else os.path.dirname(self.files[0])
+
+                    final_dest_root = ensure_long_path(final_dest_root)
+                    if not os.path.exists(final_dest_root): os.makedirs(final_dest_root, exist_ok=True)
+
+                    items = os.listdir(temp_stage_root)
+                    total_stage_bytes = 0
+                    for item in items:
+                        src_p = os.path.join(temp_stage_root, item)
+                        src_p_long = ensure_long_path(src_p)
+                        if os.path.isfile(src_p_long):
+                            total_stage_bytes += os.path.getsize(src_p_long)
+                        elif os.path.isdir(src_p_long):
+                            for root, _, fs in os.walk(src_p_long):
+                                for f in fs: total_stage_bytes += os.path.getsize(os.path.join(root, f))
+                    if total_stage_bytes == 0: total_stage_bytes = 1
+                    moved_bytes = 0
+                    for item in items:
+                        if not self._is_running: break
+                        src_item = os.path.join(temp_stage_root, item)
+                        dst_item = os.path.join(final_dest_root, item)
+
+                        dst_item_long = ensure_long_path(dst_item)
+                        if os.path.exists(dst_item_long):
+                            if os.path.isdir(dst_item_long):
+                                shutil.rmtree(dst_item_long)
                             else:
-                                results["fail"].append((fp, msg))
-                                self.sig_log.emit(f"❌ {os.path.basename(fp)}: {msg}")
-                        except Exception as e:
-                            self.sig_log.emit(f"❌ 异常: {e}")
+                                os.remove(dst_item_long)
+                        moved_bytes = self._manual_move(src_item, dst_item, moved_bytes, total_stage_bytes)
+                    shutil.rmtree(temp_stage_root)
+                    self.sig_log.emit("✅ 回写完成")
+                except Exception as e:
+                    self.sig_log.emit(f"❌ 回写失败: {e}")
 
-            if not self._is_running: executor.shutdown(wait=False, cancel_futures=True)
-
-        if self.use_ssd and self._is_running and temp_stage_root:
-            self.sig_log.emit("--- ⚡ SSD 高速回写 ---")
-            try:
-                final_dest_root = self.custom_out
-                if not final_dest_root: final_dest_root = common_base if common_base else os.path.dirname(self.files[0])
-
-                # 修复点：回写目标目录也需要长路径
-                final_dest_root = ensure_long_path(final_dest_root)
-                if not os.path.exists(final_dest_root): os.makedirs(final_dest_root, exist_ok=True)
-
-                items = os.listdir(temp_stage_root)
-                total_stage_bytes = 0
-                for item in items:
-                    src_p = os.path.join(temp_stage_root, item)
-                    # 修复点：获取大小时使用长路径
-                    src_p_long = ensure_long_path(src_p)
-                    if os.path.isfile(src_p_long):
-                        total_stage_bytes += os.path.getsize(src_p_long)
-                    elif os.path.isdir(src_p_long):
-                        for root, _, fs in os.walk(src_p_long):
-                            for f in fs: total_stage_bytes += os.path.getsize(os.path.join(root, f))
-                if total_stage_bytes == 0: total_stage_bytes = 1
-                moved_bytes = 0
-                for item in items:
-                    if not self._is_running: break
-                    src_item = os.path.join(temp_stage_root, item)
-                    dst_item = os.path.join(final_dest_root, item)
-
-                    # 修复点：检查目标是否存在时使用长路径
-                    dst_item_long = ensure_long_path(dst_item)
-                    if os.path.exists(dst_item_long):
-                        if os.path.isdir(dst_item_long):
-                            shutil.rmtree(dst_item_long)
-                        else:
-                            os.remove(dst_item_long)
-                    moved_bytes = self._manual_move(src_item, dst_item, moved_bytes, total_stage_bytes)
-                shutil.rmtree(temp_stage_root)
-                self.sig_log.emit("✅ 回写完成")
-            except Exception as e:
-                self.sig_log.emit(f"❌ 回写失败: {e}")
-
-        msg = "任务完成" if self._is_running else "已终止"
-        self.sig_progress.emit(msg, 100)
-        self.sig_finished.emit(results)
+            msg = "任务完成" if self._is_running else "已终止"
+            self.sig_progress.emit(msg, 100)
+            self.sig_finished.emit(results)
+        finally:
+            self._shutdown_ipc()
 
     def _manual_move(self, src, dst, current_moved_total, total_stage_bytes):
         try:
@@ -345,7 +380,7 @@ class BatchWorkerThread(QThread):
                 # shutil.copystat 可能会因为长路径问题报错，这里加个 try
                 try:
                     if os.path.exists(src_long): shutil.copystat(src_long, dst_long)
-                except:
+                except OSError:
                     pass
                 return current_moved_total
         except Exception as e:
@@ -356,7 +391,7 @@ class BatchWorkerThread(QThread):
                 if os.path.exists(src_long) and not os.path.exists(dst_long):
                     shutil.move(src_long, dst_long)
                     return current_moved_total + os.path.getsize(dst_long)
-            except:
+            except OSError:
                 pass
             return current_moved_total
 
@@ -440,7 +475,7 @@ class MainWindow(QMainWindow):
         v_sidebar.addStretch()
 
         self.btn_theme = ModernButton("🎨 主题", "normal")
-        self.btn_theme.clicked.connect(self.show_theme_selector)
+        self.btn_theme.clicked.connect(self.show_theme_menu)
         self.all_buttons.append(self.btn_theme)
         v_sidebar.addWidget(self.btn_theme)
 
@@ -656,22 +691,22 @@ class MainWindow(QMainWindow):
         v_new_sec.setContentsMargins(0, 0, 0, 0)
 
         if is_encrypt:
-            lbl_key = QLabel("选择公钥:")
+            lbl_key = QLabel("选择公钥（用于加密）:")
             lbl_key.setStyleSheet("color: #888; font-size: 10px;")
             v_new_sec.addWidget(lbl_key)
             combo_key = QComboBox()
-            combo_key.setPlaceholderText("选择密钥对...")
+            combo_key.setPlaceholderText("选择公钥...")
             v_new_sec.addWidget(combo_key)
         else:
-            lbl_key = QLabel("选择私钥:")
+            lbl_key = QLabel("选择私钥（用于解密）:")
             lbl_key.setStyleSheet("color: #888; font-size: 10px;")
             v_new_sec.addWidget(lbl_key)
             combo_key = QComboBox()
-            combo_key.setPlaceholderText("选择密钥对...")
+            combo_key.setPlaceholderText("选择私钥...")
             v_new_sec.addWidget(combo_key)
             txt_key_pwd = QLineEdit()
             txt_key_pwd.setEchoMode(QLineEdit.Password)
-            txt_key_pwd.setPlaceholderText("私钥密码...")
+            txt_key_pwd.setPlaceholderText("输入私钥密码...")
             v_new_sec.addWidget(txt_key_pwd)
 
         v_sec.addWidget(self.new_sec_widget)
@@ -697,15 +732,15 @@ class MainWindow(QMainWindow):
         h_path.addWidget(btn_path)
         v_io.addLayout(h_path)
 
-        # 逻辑：只有选择了路径，才能勾选保留结构
+        # 保留目录结构
         chk_struct = CustomCheckBox("保留目录结构")
-        chk_struct.setEnabled(False)  # 默认禁用
+        chk_struct.setEnabled(False)  # 默认禁用，选择输出路径后启用
         v_io.addWidget(chk_struct)
 
+        # 加密/解密文件名（依赖保留目录结构）
         chk_dir_name_enc = None
         if is_encrypt:
-            # 逻辑：只有勾选了保留结构，才能勾选加密文件夹名
-            chk_dir_name_enc = CustomCheckBox("加密文件夹名")
+            chk_dir_name_enc = CustomCheckBox("加密文件名")
             chk_dir_name_enc.setEnabled(False)
             v_io.addWidget(chk_dir_name_enc)
 
@@ -717,8 +752,7 @@ class MainWindow(QMainWindow):
 
             chk_struct.stateChanged.connect(on_struct_toggled)
         else:
-            # 解密时同理
-            chk_dir_name_enc = CustomCheckBox("解密文件夹名")
+            chk_dir_name_enc = CustomCheckBox("解密文件名")
             chk_dir_name_enc.setEnabled(False)
             v_io.addWidget(chk_dir_name_enc)
 
@@ -783,7 +817,7 @@ class MainWindow(QMainWindow):
         lbl_status = QLabel("就绪")
         lbl_status.setAlignment(Qt.AlignCenter)
         lbl_status.setObjectName("StatusLabel")
-        lbl_status.setFont(QFont("Segoe UI", 10, QFont.Bold))
+        lbl_status.setFont(QFont(get_system_font_family(), 10, QFont.Bold))
         v_status.addWidget(lbl_status)
 
         pbar = QProgressBar()
@@ -1004,11 +1038,42 @@ class MainWindow(QMainWindow):
 
         self.txt_log = QTextEdit()
         self.txt_log.setReadOnly(True)
-        self.txt_log.setStyleSheet("border: none; font-family: 'Consolas', monospace;")
+        self.txt_log.setStyleSheet(f"border: none; font-family: {get_monospace_font_qss()};")
         v.addWidget(self.txt_log)
 
         layout.addWidget(container)
         self.content_stack.addWidget(page)
+
+    def show_theme_menu(self):
+        """显示主题选择菜单"""
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(self)
+
+        # 根据当前主题设置菜单样式
+        t = self.theme_data
+        menu.setStyleSheet(f"""
+            QMenu {{
+                background: {t['bg']};
+                color: {t['fg']};
+                border: 1px solid {t['accent']};
+                border-radius: 8px;
+                padding: 5px;
+            }}
+            QMenu::item {{
+                padding: 8px 20px;
+                border-radius: 4px;
+            }}
+            QMenu::item:selected {{
+                background: {t['accent']};
+                color: white;
+            }}
+        """)
+
+        for theme_name in self.theme_names:
+            action = menu.addAction(theme_name)
+            action.triggered.connect(lambda checked=False, name=theme_name: self.on_theme_selected(name))
+
+        menu.exec(self.btn_theme.mapToGlobal(QPoint(0, self.btn_theme.height())))
 
     def show_theme_selector(self):
         """显示主题选择器"""
@@ -1038,7 +1103,7 @@ class MainWindow(QMainWindow):
         }}
         QWidget {{
             color: {t['fg']};
-            font-family: 'Segoe UI', sans-serif;
+            font-family: {get_system_font_qss()};
         }}
         QFrame#Sidebar {{
             background-color: {t['sidebar']};
@@ -1171,14 +1236,6 @@ class MainWindow(QMainWindow):
         else:
             self.ui_enc["chk_struct"].setEnabled(True)
 
-        # 2. 保留目录结构 -> 加密文件夹名
-        if self.ui_enc["chk_struct"].isChecked() and self.ui_enc["chk_dir_name_enc"]:
-            self.ui_enc["chk_dir_name_enc"].setEnabled(True)
-        else:
-            if self.ui_enc["chk_dir_name_enc"]:
-                self.ui_enc["chk_dir_name_enc"].setChecked(False)
-                self.ui_enc["chk_dir_name_enc"].setEnabled(False)
-
         # 解密端同理
         dec_path = self.custom_dec_path
         if not dec_path:
@@ -1187,15 +1244,7 @@ class MainWindow(QMainWindow):
         else:
             self.ui_dec["chk_struct"].setEnabled(True)
 
-        if self.ui_dec["chk_struct"].isChecked() and self.ui_dec["chk_dir_name_enc"]:
-            self.ui_dec["chk_dir_name_enc"].setEnabled(True)
-        else:
-            if self.ui_dec["chk_dir_name_enc"]:
-                self.ui_dec["chk_dir_name_enc"].setChecked(False)
-                self.ui_dec["chk_dir_name_enc"].setEnabled(False)
-
-        # 3. SSD 路径 -> 启用 SSD 加速
-        # 加密端
+        # 2. SSD 路径 -> 启用 SSD 加速
         if self.custom_ssd_path:
             self.ui_enc["chk_ssd"].setEnabled(True)
             self.ui_dec["chk_ssd"].setEnabled(True)
@@ -1394,7 +1443,14 @@ class MainWindow(QMainWindow):
                 fname = os.path.basename(f)
                 out_dir = path if path else os.path.dirname(f)
                 if is_encrypt:
-                    out_path = os.path.join(out_dir, fname + ".enc")
+                    # 检查是否需要混淆文件名
+                    if ui.get("chk_name") and ui["chk_name"].isChecked():
+                        # 生成随机文件名
+                        import uuid
+                        random_name = str(uuid.uuid4().hex)[:12] + ".enc"
+                        out_path = os.path.join(out_dir, random_name)
+                    else:
+                        out_path = os.path.join(out_dir, fname + ".enc")
                     success, msg = RSAFileCipher.encrypt_file(f, out_path, key_path)
                 else:
                     out_path = os.path.join(out_dir, fname.replace(".enc", ""))
@@ -1421,7 +1477,7 @@ class MainWindow(QMainWindow):
         task_type = "加密" if is_encrypt else "解密"
         sys_logger.log(f"========== 开始{task_type}任务 ==========")
         sys_logger.log(f"任务类型: {task_type}")
-        sys_logger.log(f"文件数量: {count}")
+        sys_logger.log(f"文件数量: {len(files)}")
         sys_logger.log(f"输出目录: {path if path else '原地覆盖'}")
         sys_logger.log(f"保留目录结构: {keep_struct}")
         sys_logger.log(f"{'加密' if is_encrypt else '解密'}文件夹名: {enc_dirname}")
@@ -1436,7 +1492,7 @@ class MainWindow(QMainWindow):
         sys_logger.log("待处理文件列表:")
         for i, f in enumerate(files, 1):
             sys_logger.log(f"  [{i}] {f}")
-        self.append_log(f"启动{task_type}任务，共 {count} 个文件")
+        self.append_log(f"启动{task_type}任务，共 {len(files)} 个文件")
 
         ui["list"].setEnabled(False)
         ui["pwd"].setEnabled(False)
@@ -1545,13 +1601,33 @@ class MainWindow(QMainWindow):
     def action_refresh_keys(self):
         self.key_list.clear()
         if self.use_new_system:
-            # 新系统：显示.pem密钥对
+            # 新系统：分别显示公钥和私钥
             keys_dir = DIRS["KEYS"]
+            key_pairs = {}
+
+            # 收集所有密钥文件
             for f in os.listdir(keys_dir):
                 if f.endswith('_private.pem'):
                     key_name = f.replace('_private.pem', '')
-                    self.key_list.addItem(f"🔐 {key_name}")
-            sys_logger.log(f"[新系统] 刷新密钥列表，共 {self.key_list.count()} 个密钥对")
+                    if key_name not in key_pairs:
+                        key_pairs[key_name] = {'private': None, 'public': None}
+                    key_pairs[key_name]['private'] = f
+                elif f.endswith('_public.pem'):
+                    key_name = f.replace('_public.pem', '')
+                    if key_name not in key_pairs:
+                        key_pairs[key_name] = {'private': None, 'public': None}
+                    key_pairs[key_name]['public'] = f
+
+            # 显示密钥对
+            for key_name, files in sorted(key_pairs.items()):
+                self.key_list.addItem(f"📦 密钥对: {key_name}")
+                if files['public']:
+                    self.key_list.addItem(f"  🔓 公钥: {files['public']}")
+                if files['private']:
+                    self.key_list.addItem(f"  🔐 私钥: {files['private']}")
+                self.key_list.addItem("")  # 空行分隔
+
+            sys_logger.log(f"[新系统] 刷新密钥列表，共 {len(key_pairs)} 个密钥对")
         else:
             # 老系统：显示提示信息
             self.key_list.addItem("老系统无需管理密钥，加密时直接输入密码即可")

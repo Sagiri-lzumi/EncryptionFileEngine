@@ -3,6 +3,8 @@ from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QRectF, Propert
 from PySide6.QtGui import QPainter, QColor, QPainterPath, QPen, QFont
 import os
 
+from ui.platform_fonts import get_system_font_family
+
 
 class GlassWidget(QWidget):
     """液态玻璃效果的Widget"""
@@ -35,7 +37,7 @@ class ThemeButton(QPushButton):
         self.color = color
         self.setCursor(Qt.PointingHandCursor)
         self.setFixedSize(120, 40)
-        self.setFont(QFont("Segoe UI", 9))
+        self.setFont(QFont(get_system_font_family(), 9))
 
         # 缩放动画
         self._scale = 0.0
@@ -271,7 +273,7 @@ class AnimatedSidebarButton(QPushButton):
         self.setCursor(Qt.PointingHandCursor)
         self.setFixedHeight(55)
         self.icon_emoji = icon_emoji
-        self.setFont(QFont("Segoe UI", 10, QFont.Bold))
+        self.setFont(QFont(get_system_font_family(), 10, QFont.Bold))
 
         # 动画属性
         self._hover_progress = 0.0
@@ -380,7 +382,7 @@ class ModernButton(QPushButton):
         self.setCursor(Qt.PointingHandCursor)
         self.color_type = color_type
         self.setMinimumHeight(36)
-        self.setFont(QFont("Segoe UI", 9))
+        self.setFont(QFont(get_system_font_family(), 9))
 
         # 点击动画
         self._press_scale = 1.0

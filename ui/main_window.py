@@ -1106,35 +1106,40 @@ class MainWindow(QMainWindow):
             font-family: {get_system_font_qss()};
         }}
         QFrame#Sidebar {{
-            background-color: {t['sidebar']};
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {t['sidebar']}, stop:1 {t['bg']});
             border-right: 1px solid {t['border']};
+            border-radius: 0px;
         }}
         QLabel#AppTitle {{
             color: {t['fg']};
-            font-size: 18px;
+            font-size: 20px;
             font-weight: 600;
         }}
         QFrame#ContentPanel {{
-            background-color: {t['panel']};
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 rgba(255, 255, 255, 0.05), stop:1 rgba(255, 255, 255, 0.02));
             border: 1px solid {t['border']};
             border-radius: 16px;
         }}
         QLabel#SectionTitle {{
             color: {t['fg']};
-            font-size: 14px;
+            font-size: 15px;
             font-weight: 600;
             margin-bottom: 8px;
         }}
         QLineEdit, QTextEdit, QComboBox {{
-            background-color: {t['input_bg']};
+            background: rgba(255, 255, 255, 0.05);
             border: 1px solid {t['border']};
             border-radius: 8px;
             color: {t['fg']};
-            padding: 8px 12px;
-            font-size: 13px;
+            padding: 10px 14px;
+            font-size: 14px;
+            min-height: 20px;
         }}
         QLineEdit:focus, QComboBox:focus {{
             border: 2px solid {t['accent']};
+            background: rgba(255, 255, 255, 0.08);
         }}
         QComboBox::drop-down {{
             border: none;
@@ -1148,27 +1153,28 @@ class MainWindow(QMainWindow):
             margin-right: 10px;
         }}
         QGroupBox {{
+            background: rgba(255, 255, 255, 0.03);
             border: 1px solid {t['border']};
-            border-radius: 10px;
-            margin-top: 10px;
-            padding: 18px 16px 16px 16px;
+            border-radius: 12px;
+            margin-top: 12px;
+            padding: 22px 18px 18px 18px;
             font-weight: 600;
-            font-size: 13px;
+            font-size: 14px;
             color: {t['fg']};
         }}
         QGroupBox::title {{
             subcontrol-origin: margin;
-            left: 10px;
-            padding: 0 6px;
+            left: 12px;
+            padding: 0 8px;
         }}
         QFrame#StatusContainer {{
-            background-color: {t['input_bg']};
+            background: rgba(255, 255, 255, 0.03);
             border: 1px solid {t['border']};
             border-radius: 10px;
             padding: 12px;
         }}
         QListWidget {{
-            background-color: {t['list_bg']};
+            background: rgba(255, 255, 255, 0.03);
             border: 1px solid {t['border']};
             border-radius: 10px;
             padding: 6px;
@@ -1179,21 +1185,22 @@ class MainWindow(QMainWindow):
             margin: 2px 0px;
         }}
         QListWidget::item:selected {{
-            background-color: {t['accent']};
+            background: {t['accent']};
             color: white;
         }}
         QListWidget::item:hover {{
-            background-color: {t['border']};
+            background: rgba(255, 255, 255, 0.08);
         }}
         QProgressBar {{
-            background-color: {t['input_bg']};
+            background: rgba(255, 255, 255, 0.05);
             border: 1px solid {t['border']};
             border-radius: 6px;
             text-align: center;
             height: 8px;
         }}
         QProgressBar::chunk {{
-            background-color: {t['accent']};
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                stop:0 {t['accent']}, stop:1 rgba(255, 255, 255, 0.8));
             border-radius: 5px;
         }}
         QCheckBox {{

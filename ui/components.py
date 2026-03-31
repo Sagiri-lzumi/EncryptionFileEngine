@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QPushButton, QListWidget, QAbstractItemView, QCheckBox, QStyle, QStyleOptionButton, QWidget, QGraphicsBlurEffect
 from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QRectF, Property, QRect, QPoint, QParallelAnimationGroup, Signal
-from PySide6.QtGui import QPainter, QColor, QPainterPath, QPen, QFont
+from PySide6.QtGui import QPainter, QColor, QPainterPath, QPen, QFont, QBrush, QLinearGradient
 import os
 
 from ui.platform_fonts import get_system_font_family
@@ -332,21 +332,27 @@ class AnimatedSidebarButton(QPushButton):
         from ui.themes import THEMES
         theme = self.window().theme_data if hasattr(self.window(), 'theme_data') else THEMES["Light"]
 
-        # 背景色混合
-        bg_color = QColor(theme['accent'])
+        # 背景色混合 - 玻璃态效果
         if self._check_progress > 0:
-            bg_color.setAlpha(int(40 * self._check_progress))
+            # 选中状态：渐变玻璃效果
+            gradient = QLinearGradient(rect.topLeft(), rect.bottomLeft())
+            color1 = QColor(255, 255, 255, int(25 * self._check_progress))
+            color2 = QColor(theme['accent'])
+            color2.setAlpha(int(50 * self._check_progress))
+            gradient.setColorAt(0, color1)
+            gradient.setColorAt(1, color2)
+            bg_brush = QBrush(gradient)
         else:
-            alpha = int(20 * self._hover_progress)
-            bg_color = QColor(theme['fg'])
-            bg_color.setAlpha(alpha)
+            # 悬停状态：半透明白色
+            bg_color = QColor(255, 255, 255, int(15 * self._hover_progress))
+            bg_brush = QBrush(bg_color)
 
-        # 绘制背景
+        # 绘制背景 - 玻璃态圆角
         if self._check_progress > 0.01 or self._hover_progress > 0.01:
             path = QPainterPath()
-            path.addRoundedRect(rect.adjusted(8, 4, -8, -4), 8, 8)
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(bg_color)
+            path.addRoundedRect(rect.adjusted(8, 4, -8, -4), 10, 10)
+            painter.setPen(QPen(QColor(255, 255, 255, 30), 1))
+            painter.setBrush(bg_brush)
             painter.drawPath(path)
 
         # 选中指示条（带动画）
@@ -381,8 +387,8 @@ class ModernButton(QPushButton):
         super().__init__(text, parent)
         self.setCursor(Qt.PointingHandCursor)
         self.color_type = color_type
-        self.setMinimumHeight(36)
-        self.setFont(QFont(get_system_font_family(), 9))
+        self.setMinimumHeight(42)
+        self.setFont(QFont(get_system_font_family(), 10))
 
         # 点击动画
         self._press_scale = 1.0
@@ -417,25 +423,48 @@ class ModernButton(QPushButton):
         colors = {
             "primary": (theme['accent'], "#ffffff"),
             "danger": (theme['danger'], "#ffffff"),
-            "normal": (theme['panel'], theme['fg'])
+            "normal": ("rgba(255, 255, 255, 0.05)", theme['fg'])
         }
         bg, fg = colors.get(self.color_type, colors["normal"])
-        self.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {bg};
-                color: {fg};
-                border: 1px solid {theme['border']};
-                border-radius: 6px;
-                padding: 0 15px;
-            }}
-            QPushButton:hover {{
-                background-color: {theme['accent_hover'] if self.color_type == 'primary' else theme['border']};
-            }}
-            QPushButton:disabled {{
-                background-color: {theme['bg']};
-                color: {theme['text_sec']};
-            }}
-        """)
+
+        if self.color_type == "primary":
+            style = f"""
+                QPushButton {{
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 {bg}, stop:1 {theme['accent_hover']});
+                    color: {fg};
+                    border: none;
+                    border-radius: 8px;
+                    padding: 0 15px;
+                    font-weight: 600;
+                }}
+                QPushButton:hover {{
+                    background: {theme['accent_hover']};
+                }}
+                QPushButton:disabled {{
+                    background: rgba(255, 255, 255, 0.03);
+                    color: {theme['text_sec']};
+                }}
+            """
+        else:
+            style = f"""
+                QPushButton {{
+                    background: {bg};
+                    color: {fg};
+                    border: 1px solid {theme['border']};
+                    border-radius: 8px;
+                    padding: 0 15px;
+                }}
+                QPushButton:hover {{
+                    background: rgba(255, 255, 255, 0.08);
+                    border: 1px solid {theme['border']};
+                }}
+                QPushButton:disabled {{
+                    background: rgba(255, 255, 255, 0.02);
+                    color: {theme['text_sec']};
+                }}
+            """
+        self.setStyleSheet(style)
 
 
 class DragDropListWidget(QListWidget):

@@ -401,7 +401,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("File Security Engine Enterprise")
-        self.setFixedSize(1280, 880)
+        self.setFixedSize(1200, 850)
 
         self.theme_names = list(THEMES.keys())
         self.current_theme_idx = 0  # 默认Light主题
@@ -475,6 +475,7 @@ class MainWindow(QMainWindow):
         v_sidebar.addStretch()
 
         self.btn_theme = ModernButton("🎨 主题", "normal")
+        self.btn_theme.setMinimumHeight(44)  # 增加按钮高度
         self.btn_theme.clicked.connect(self.show_theme_menu)
         self.all_buttons.append(self.btn_theme)
         v_sidebar.addWidget(self.btn_theme)
@@ -604,6 +605,7 @@ class MainWindow(QMainWindow):
         v_left = QVBoxLayout(left_container)
         v_left.setContentsMargins(20, 20, 20, 20)
         v_left.setSpacing(12)
+        v_left.setAlignment(Qt.AlignTop)
 
         # 系统状态提示
         h_status = QHBoxLayout()
@@ -673,7 +675,6 @@ class MainWindow(QMainWindow):
         grp_sec = QGroupBox("安全凭证")
         v_sec = QVBoxLayout(grp_sec)
         v_sec.setSpacing(12)
-        v_sec.setContentsMargins(16, 16, 16, 16)
 
         # 老系统：密码输入
         self.old_sec_widget = QWidget() if is_encrypt else QWidget()
@@ -716,17 +717,18 @@ class MainWindow(QMainWindow):
         # 2. 输出设置
         grp_io = QGroupBox("输出路径")
         v_io = QVBoxLayout(grp_io)
-        v_io.setSpacing(12)
-        v_io.setContentsMargins(16, 16, 16, 16)
+        v_io.setSpacing(10)
 
         h_path = QHBoxLayout()
+        h_path.setSpacing(8)
         txt_path = QLineEdit()
         txt_path.setPlaceholderText("默认：覆盖源文件")
         txt_path.setReadOnly(True)
-        h_path.addWidget(txt_path)
+        txt_path.setFixedHeight(48)  # 固定高度，与按钮一致
+        h_path.addWidget(txt_path, 1)  # stretch=1 让输入框占据剩余空间
 
         btn_path = ModernButton("...", "normal")
-        btn_path.setFixedWidth(40)
+        btn_path.setFixedSize(90, 48)
         btn_path.clicked.connect(lambda: self.action_select_dir(is_encrypt))
         self.all_buttons.append(btn_path)
         h_path.addWidget(btn_path)
@@ -769,18 +771,18 @@ class MainWindow(QMainWindow):
         # 3. 高级选项
         grp_adv = QGroupBox("高级策略")
         v_adv = QVBoxLayout(grp_adv)
-        v_adv.setSpacing(12)
-        v_adv.setContentsMargins(16, 16, 16, 16)
+        v_adv.setSpacing(10)
 
         h_ssd = QHBoxLayout()
+        h_ssd.setSpacing(8)
         txt_ssd = QLineEdit()
         txt_ssd.setPlaceholderText("请先选择缓存路径 ->")
         txt_ssd.setReadOnly(True)
-        txt_ssd.setMinimumHeight(36)
-        h_ssd.addWidget(txt_ssd)
+        txt_ssd.setFixedHeight(48)  # 固定高度，与按钮一致
+        h_ssd.addWidget(txt_ssd, 1)  # stretch=1 让输入框占据剩余空间
 
         btn_ssd = ModernButton("选择缓存", "normal")
-        btn_ssd.setFixedWidth(80)
+        btn_ssd.setFixedSize(90, 48)
         btn_ssd.clicked.connect(lambda: self.action_select_ssd(is_encrypt))
         self.all_buttons.append(btn_ssd)
         h_ssd.addWidget(btn_ssd)
@@ -830,13 +832,14 @@ class MainWindow(QMainWindow):
         v_right.addWidget(status_container)
 
         stack = QStackedWidget()
-        stack.setFixedHeight(50)
+        stack.setFixedHeight(56)  # 增加高度让按钮更舒适
 
         # Start
         w_start = QWidget()
         l_start = QHBoxLayout(w_start)
         l_start.setContentsMargins(0, 0, 0, 0)
         btn_run = ModernButton(f"开始{'加密' if is_encrypt else '解密'}", "primary")
+        btn_run.setMinimumHeight(44)  # 设置按钮最小高度
         btn_run.clicked.connect(self.run_encrypt if is_encrypt else self.run_decrypt)
         self.all_buttons.append(btn_run)
         l_start.addWidget(btn_run)
@@ -942,7 +945,7 @@ class MainWindow(QMainWindow):
         h_switch.addStretch()
 
         self.btn_switch_system = ModernButton("切换到新系统 →", "primary")
-        self.btn_switch_system.setFixedWidth(150)
+        self.btn_switch_system.setFixedSize(150, 40)  # 固定宽高
         self.btn_switch_system.clicked.connect(self.action_switch_system)
         self.all_buttons.append(self.btn_switch_system)
         h_switch.addWidget(self.btn_switch_system)
@@ -971,18 +974,21 @@ class MainWindow(QMainWindow):
         self.new_system_widget = QWidget()
         v_new = QVBoxLayout(self.new_system_widget)
         v_new.setContentsMargins(0, 0, 0, 0)
-        v_new.setSpacing(10)
+        v_new.setSpacing(12)
 
         lbl_new_tip = QLabel("🔐 生成新密钥对")
-        lbl_new_tip.setStyleSheet("font-weight: bold; color: #5c6bc0; font-size: 11px;")
+        lbl_new_tip.setStyleSheet("font-weight: bold; color: #5c6bc0; font-size: 12px;")
         v_new.addWidget(lbl_new_tip)
 
         h_new = QHBoxLayout()
+        h_new.setSpacing(10)
         self.new_key_name_input = QLineEdit()
         self.new_key_name_input.setPlaceholderText("密钥对名称 (例如: my_key)")
+        self.new_key_name_input.setFixedHeight(40)
         self.new_key_password_input = QLineEdit()
         self.new_key_password_input.setPlaceholderText("保护密码")
         self.new_key_password_input.setEchoMode(QLineEdit.Password)
+        self.new_key_password_input.setFixedHeight(40)
         h_new.addWidget(self.new_key_name_input, 2)
         h_new.addWidget(self.new_key_password_input, 1)
         v_new.addLayout(h_new)
@@ -994,20 +1000,24 @@ class MainWindow(QMainWindow):
         btn_bar.setSpacing(10)
 
         self.btn_gen_new = ModernButton("🔐 生成密钥对", "primary")
+        self.btn_gen_new.setMinimumHeight(40)
         self.btn_gen_new.clicked.connect(self.action_generate_keypair)
         self.all_buttons.append(self.btn_gen_new)
         self.btn_gen_new.hide()
 
         self.btn_import_new = ModernButton("📥 导入", "normal")
+        self.btn_import_new.setMinimumHeight(40)
         self.btn_import_new.clicked.connect(self.action_import_keypair)
         self.all_buttons.append(self.btn_import_new)
         self.btn_import_new.hide()
 
         btn_delete = ModernButton("🗑️ 删除", "danger")
+        btn_delete.setMinimumHeight(40)
         btn_delete.clicked.connect(self.action_delete_key)
         self.all_buttons.append(btn_delete)
 
         btn_refresh = ModernButton("🔄 刷新", "normal")
+        btn_refresh.setMinimumHeight(40)
         btn_refresh.clicked.connect(self.action_refresh_keys)
         self.all_buttons.append(btn_refresh)
 
@@ -1106,9 +1116,8 @@ class MainWindow(QMainWindow):
             font-family: {get_system_font_qss()};
         }}
         QFrame#Sidebar {{
-            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 {t['sidebar']}, stop:1 {t['bg']});
-            border-right: 1px solid {t['border']};
+            background: {t['sidebar']};
+            border-right: 1px solid {t['glass_border']};
             border-radius: 0px;
         }}
         QLabel#AppTitle {{
@@ -1117,10 +1126,9 @@ class MainWindow(QMainWindow):
             font-weight: 600;
         }}
         QFrame#ContentPanel {{
-            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 rgba(255, 255, 255, 0.05), stop:1 rgba(255, 255, 255, 0.02));
-            border: 1px solid {t['border']};
-            border-radius: 16px;
+            background: {t['glass_bg']};
+            border: 2px solid {t['glass_border']};
+            border-radius: 20px;
         }}
         QLabel#SectionTitle {{
             color: {t['fg']};
@@ -1129,17 +1137,16 @@ class MainWindow(QMainWindow):
             margin-bottom: 8px;
         }}
         QLineEdit, QTextEdit, QComboBox {{
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid {t['border']};
-            border-radius: 8px;
+            background: {t['input_bg']};
+            border: 2px solid {t['glass_border']};
+            border-radius: 12px;
             color: {t['fg']};
-            padding: 10px 14px;
+            padding: 8px 12px;
             font-size: 14px;
-            min-height: 20px;
         }}
         QLineEdit:focus, QComboBox:focus {{
             border: 2px solid {t['accent']};
-            background: rgba(255, 255, 255, 0.08);
+            background: {t['glass_bg']};
         }}
         QComboBox::drop-down {{
             border: none;
@@ -1153,73 +1160,74 @@ class MainWindow(QMainWindow):
             margin-right: 10px;
         }}
         QGroupBox {{
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid {t['border']};
-            border-radius: 12px;
-            margin-top: 12px;
-            padding: 22px 18px 18px 18px;
+            background: {t['glass_bg']};
+            border: 2px solid {t['glass_border']};
+            border-radius: 16px;
+            margin-top: 14px;
+            padding: 16px 12px 12px 12px;
             font-weight: 600;
             font-size: 14px;
             color: {t['fg']};
         }}
         QGroupBox::title {{
             subcontrol-origin: margin;
-            left: 12px;
-            padding: 0 8px;
+            left: 14px;
+            padding: 0 10px;
         }}
         QFrame#StatusContainer {{
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid {t['border']};
-            border-radius: 10px;
-            padding: 12px;
+            background: {t['glass_bg']};
+            border: 2px solid {t['glass_border']};
+            border-radius: 14px;
+            padding: 14px;
         }}
         QListWidget {{
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid {t['border']};
-            border-radius: 10px;
-            padding: 6px;
+            background: {t['list_bg']};
+            border: 2px solid {t['glass_border']};
+            border-radius: 14px;
+            padding: 8px;
         }}
         QListWidget::item {{
-            border-radius: 6px;
-            padding: 8px 10px;
-            margin: 2px 0px;
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin: 3px 0px;
         }}
         QListWidget::item:selected {{
             background: {t['accent']};
             color: white;
         }}
         QListWidget::item:hover {{
-            background: rgba(255, 255, 255, 0.08);
+            background: {t['glass_bg']};
         }}
         QProgressBar {{
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid {t['border']};
-            border-radius: 6px;
+            background: {t['input_bg']};
+            border: 2px solid {t['glass_border']};
+            border-radius: 8px;
             text-align: center;
-            height: 8px;
+            height: 10px;
         }}
         QProgressBar::chunk {{
             background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 {t['accent']}, stop:1 rgba(255, 255, 255, 0.8));
-            border-radius: 5px;
+                stop:0 {t['accent']}, stop:1 {t['accent_hover']});
+            border-radius: 6px;
         }}
         QCheckBox {{
-            spacing: 8px;
+            spacing: 10px;
             color: {t['fg']};
-            font-size: 13px;
+            font-size: 14px;
         }}
         QCheckBox::indicator {{
-            width: 18px;
-            height: 18px;
-            border-radius: 4px;
-            border: 2px solid {t['border']};
+            width: 22px;
+            height: 22px;
+            border-radius: 6px;
+            border: 2px solid {t['glass_border']};
             background: {t['input_bg']};
         }}
         QCheckBox::indicator:hover {{
             border-color: {t['accent']};
+            background: {t['glass_bg']};
         }}
         QCheckBox::indicator:checked {{
-            background-color: {t['accent']};
+            background: {t['accent']};
             border-color: {t['accent']};
         }}
         """

@@ -5,7 +5,7 @@ def get_system_font_family():
     if sys.platform == "win32":
         return "Segoe UI"
     if sys.platform == "darwin":
-        return "SF Pro Text"
+        return "PingFang SC"  # macOS 中文字体，兼容性好
     return "Ubuntu"
 
 

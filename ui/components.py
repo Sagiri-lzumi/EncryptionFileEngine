@@ -200,9 +200,10 @@ class CustomCheckBox(QCheckBox):
     def __init__(self, text="", parent=None):
         super().__init__(text, parent)
         self.setStyleSheet("")
+        self.setMinimumHeight(28)
 
         # 动画属性
-        self._check_progress = 0.0
+        self._check_progress = 1.0 if self.isChecked() else 0.0
         self._check_anim = QPropertyAnimation(self, b"checkProgress", self)
         self._check_anim.setDuration(200)
         self._check_anim.setEasingCurve(QEasingCurve.OutBack)
@@ -229,39 +230,48 @@ class CustomCheckBox(QCheckBox):
         from ui.themes import THEMES
         theme = self.window().theme_data if hasattr(self.window(), 'theme_data') else THEMES["Light"]
 
-        # 绘制复选框
+        # 绘制复选框 - 添加左边距使其与输入框对齐
         box_size = 20
+        box_x = 16  # 左边距，与输入框 padding 对齐
         box_y = (self.height() - box_size) // 2
-        box_rect = QRect(0, box_y, box_size, box_size)
+        box_rect = QRect(box_x, box_y, box_size, box_size)
 
         # 背景色动画
         if self._check_progress > 0:
             bg_color = QColor(theme['accent'])
             border_color = QColor(theme['accent'])
         else:
-            bg_color = QColor(theme['input_bg'])
-            border_color = QColor(theme['border'])
+            # 未选中状态使用柔和的背景和边框
+            bg_color = QColor(255, 255, 255, 60)
+            border_color = QColor(theme['accent'])
+            border_color.setAlpha(40)
 
         painter.setBrush(bg_color)
-        painter.setPen(QPen(border_color, 2))
-        painter.drawRoundedRect(box_rect, 4, 4)
+        painter.setPen(QPen(border_color, 1.5))
+        painter.drawRoundedRect(box_rect, 5, 5)
 
         # 绘制对钩（带动画）
         if self._check_progress > 0.01:
             painter.setPen(QPen(QColor("white"), 2.5, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-            offset_y = box_y
-            # 对钩路径随进度绘制
             progress = self._check_progress
-            painter.drawLine(5, 10 + offset_y, 5 + int(3 * progress), 10 + int(3 * progress) + offset_y)
+
+            # 基于 box_rect 计算对钩位置
+            base_x = box_rect.left() + 6
+            base_y = box_rect.top() + 10
+
+            # 对钩左半部分
+            painter.drawLine(base_x, base_y, base_x + int(3 * progress), base_y + int(3 * progress))
+
+            # 对钩右半部分
             if progress > 0.5:
                 sub_progress = (progress - 0.5) * 2
-                painter.drawLine(8, 13 + offset_y, 8 + int(7 * sub_progress), 13 - int(7 * sub_progress) + offset_y)
+                painter.drawLine(base_x + 3, base_y + 3, base_x + 3 + int(7 * sub_progress), base_y + 3 - int(7 * sub_progress))
 
         # 绘制文本
         if self.text():
             painter.setPen(QColor(theme['fg']))
             painter.setFont(self.font())
-            text_rect = QRect(box_size + 8, 0, self.width() - box_size - 8, self.height())
+            text_rect = QRect(box_x + box_size + 8, 0, self.width() - box_x - box_size - 8, self.height())
             painter.drawText(text_rect, Qt.AlignVCenter | Qt.AlignLeft, self.text())
 
 
@@ -387,7 +397,6 @@ class ModernButton(QPushButton):
         super().__init__(text, parent)
         self.setCursor(Qt.PointingHandCursor)
         self.color_type = color_type
-        self.setMinimumHeight(42)
         self.setFont(QFont(get_system_font_family(), 10))
 
         # 点击动画

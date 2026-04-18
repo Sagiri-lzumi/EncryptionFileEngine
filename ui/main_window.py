@@ -26,7 +26,7 @@ from config import DIRS
 from core.file_cipher import FileCipherEngine
 from core.logger import sys_logger
 from ui.themes import THEMES
-from ui.components import AnimatedSidebarButton, ModernButton, DragDropListWidget, CustomCheckBox, ThemeSelector
+from ui.components import AnimatedSidebarButton, ModernButton, DragDropListWidget, CustomCheckBox, ThemeSelector, SmoothScrollArea, DropDownComboBox
 from ui.platform_fonts import get_monospace_font_qss, get_system_font_family, get_system_font_qss
 from ui.utils import ensure_long_path, format_size, get_drive_root
 
@@ -433,8 +433,8 @@ class MainWindow(QMainWindow):
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
         main_layout = QHBoxLayout(main_widget)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
+        main_layout.setContentsMargins(12, 12, 12, 12)
+        main_layout.setSpacing(12)
 
         # === 1. 左侧导航栏 ===
         self.sidebar = QFrame()
@@ -442,17 +442,17 @@ class MainWindow(QMainWindow):
         self.sidebar.setObjectName("Sidebar")
 
         v_sidebar = QVBoxLayout(self.sidebar)
-        v_sidebar.setContentsMargins(20, 40, 20, 30)
-        v_sidebar.setSpacing(12)
+        v_sidebar.setContentsMargins(16, 28, 16, 20)
+        v_sidebar.setSpacing(6)
 
         # 标题
         lbl_title = QLabel("🔐 Encryption")
         lbl_title.setObjectName("AppTitle")
         lbl_title.setAlignment(Qt.AlignCenter)
-        lbl_title.setFixedHeight(50)
+        lbl_title.setFixedHeight(44)
         v_sidebar.addWidget(lbl_title)
 
-        v_sidebar.addSpacing(30)
+        v_sidebar.addSpacing(20)
 
         # 导航按钮
         self.btn_nav_enc = AnimatedSidebarButton("加密终端", "🔒", self)
@@ -475,7 +475,7 @@ class MainWindow(QMainWindow):
         v_sidebar.addStretch()
 
         self.btn_theme = ModernButton("🎨 主题", "normal")
-        self.btn_theme.setMinimumHeight(44)  # 增加按钮高度
+        self.btn_theme.setMinimumHeight(42)
         self.btn_theme.clicked.connect(self.show_theme_menu)
         self.all_buttons.append(self.btn_theme)
         v_sidebar.addWidget(self.btn_theme)
@@ -483,14 +483,14 @@ class MainWindow(QMainWindow):
         # 版本信息
         lbl_version = QLabel("v1.0 nexus")
         lbl_version.setAlignment(Qt.AlignCenter)
-        lbl_version.setStyleSheet("color: #86868B; font-size: 10px;")
+        lbl_version.setStyleSheet("color: #94A3B8; font-size: 10px; font-weight: 500;")
         v_sidebar.addWidget(lbl_version)
 
         main_layout.addWidget(self.sidebar)
 
         # === 2. 右侧内容区 ===
         self.content_stack = QStackedWidget()
-        main_layout.addWidget(self.content_stack)
+        main_layout.addWidget(self.content_stack, 1)
 
         self._init_page_encrypt()
         self._init_page_decrypt()
@@ -597,13 +597,18 @@ class MainWindow(QMainWindow):
         page = QWidget()
         # 使用 Splitter 允许用户调整左右比例
         splitter = QSplitter(Qt.Horizontal)
-        splitter.setHandleWidth(2)
+        splitter.setHandleWidth(8)
+        splitter.setStyleSheet(f"""
+            QSplitter::handle {{
+                background: transparent;
+            }}
+        """)
 
         # === 左侧：文件列表 (Card) ===
         left_container = QFrame()
         left_container.setObjectName("ContentPanel")
         v_left = QVBoxLayout(left_container)
-        v_left.setContentsMargins(20, 20, 20, 20)
+        v_left.setContentsMargins(18, 18, 18, 18)
         v_left.setSpacing(12)
         v_left.setAlignment(Qt.AlignTop)
 
@@ -611,11 +616,11 @@ class MainWindow(QMainWindow):
         h_status = QHBoxLayout()
         if is_encrypt:
             self.lbl_enc_system = QLabel("🔹 老系统")
-            self.lbl_enc_system.setStyleSheet("color: #5c6bc0; font-weight: bold;")
+            self.lbl_enc_system.setStyleSheet("color: #5c6bc0; font-weight: 600; font-size: 12px;")
             h_status.addWidget(self.lbl_enc_system)
         else:
             self.lbl_dec_system = QLabel("🔹 老系统")
-            self.lbl_dec_system.setStyleSheet("color: #5c6bc0; font-weight: bold;")
+            self.lbl_dec_system.setStyleSheet("color: #5c6bc0; font-weight: 600; font-size: 12px;")
             h_status.addWidget(self.lbl_dec_system)
         h_status.addStretch()
         v_left.addLayout(h_status)
@@ -625,18 +630,17 @@ class MainWindow(QMainWindow):
         v_left.addWidget(lbl_list)
 
         file_list = DragDropListWidget()
-        v_left.addWidget(file_list)
+        v_left.addWidget(file_list, 1)
 
         # 按钮栏
         btn_bar = QHBoxLayout()
-        btn_bar.setSpacing(12)
+        btn_bar.setSpacing(8)
 
         btn_add = ModernButton("➕ 添加文件", "normal")
         btn_add.clicked.connect(lambda: self.action_add_file(is_encrypt))
         self.all_buttons.append(btn_add)
 
-        # 新增：添加目录按钮
-        btn_add_folder = ModernButton("➕ 添加目录", "normal")
+        btn_add_folder = ModernButton("📁 添加目录", "normal")
         btn_add_folder.clicked.connect(lambda: self.action_add_folder(is_encrypt))
         self.all_buttons.append(btn_add_folder)
 
@@ -649,7 +653,7 @@ class MainWindow(QMainWindow):
         self.all_buttons.append(btn_clr)
 
         btn_bar.addWidget(btn_add)
-        btn_bar.addWidget(btn_add_folder)  # 添加到布局
+        btn_bar.addWidget(btn_add_folder)
         btn_bar.addWidget(btn_del)
         btn_bar.addWidget(btn_clr)
         btn_bar.addStretch()
@@ -659,22 +663,41 @@ class MainWindow(QMainWindow):
 
         # === 右侧：配置面板 (Card) ===
         right_container = QFrame()
-        right_container.setObjectName("ContentPanel")
+        right_container.setObjectName("ConfigPanel")
         right_container.setMinimumWidth(360)
         right_container.setMaximumWidth(480)
 
         v_right = QVBoxLayout(right_container)
-        v_right.setContentsMargins(20, 20, 20, 20)
-        v_right.setSpacing(16)
+        v_right.setContentsMargins(0, 0, 0, 0)
+        v_right.setSpacing(0)
 
+        # 标题区域 - 固定在顶部
+        title_area = QWidget()
+        title_area.setObjectName("ConfigTitleArea")
+        v_title = QVBoxLayout(title_area)
+        v_title.setContentsMargins(18, 16, 18, 10)
         lbl_settings = QLabel("⚙️ 任务配置")
         lbl_settings.setObjectName("SectionTitle")
-        v_right.addWidget(lbl_settings)
+        v_title.addWidget(lbl_settings)
+        v_right.addWidget(title_area)
+
+        # === 可滚动配置区域 ===
+        scroll_area = SmoothScrollArea()
+        scroll_area.setObjectName("ConfigScrollArea")
+        scroll_area.setMinimumHeight(300)
+
+        # 滚动内容容器
+        scroll_content = QWidget()
+        scroll_content.setObjectName("ScrollContent")
+        v_scroll = QVBoxLayout(scroll_content)
+        v_scroll.setContentsMargins(18, 0, 18, 12)
+        v_scroll.setSpacing(14)
 
         # 1. 安全设置
-        grp_sec = QGroupBox("安全凭证")
+        grp_sec = QGroupBox("🔐 安全凭证")
         v_sec = QVBoxLayout(grp_sec)
-        v_sec.setSpacing(12)
+        v_sec.setSpacing(10)
+        v_sec.setContentsMargins(14, 20, 14, 14)
 
         # 老系统：密码输入
         self.old_sec_widget = QWidget() if is_encrypt else QWidget()
@@ -683,6 +706,7 @@ class MainWindow(QMainWindow):
         txt_pwd = QLineEdit()
         txt_pwd.setEchoMode(QLineEdit.Password)
         txt_pwd.setPlaceholderText("输入密码...")
+        txt_pwd.setMinimumHeight(40)
         v_old_sec.addWidget(txt_pwd)
         v_sec.addWidget(self.old_sec_widget)
 
@@ -690,45 +714,48 @@ class MainWindow(QMainWindow):
         self.new_sec_widget = QWidget() if is_encrypt else QWidget()
         v_new_sec = QVBoxLayout(self.new_sec_widget)
         v_new_sec.setContentsMargins(0, 0, 0, 0)
+        v_new_sec.setSpacing(6)
 
         if is_encrypt:
             lbl_key = QLabel("选择公钥（用于加密）:")
-            lbl_key.setStyleSheet("color: #888; font-size: 10px;")
+            lbl_key.setStyleSheet("color: #888; font-size: 11px; font-weight: 500;")
             v_new_sec.addWidget(lbl_key)
-            combo_key = QComboBox()
+            combo_key = DropDownComboBox()
             combo_key.setPlaceholderText("选择公钥...")
             v_new_sec.addWidget(combo_key)
         else:
             lbl_key = QLabel("选择私钥（用于解密）:")
-            lbl_key.setStyleSheet("color: #888; font-size: 10px;")
+            lbl_key.setStyleSheet("color: #888; font-size: 11px; font-weight: 500;")
             v_new_sec.addWidget(lbl_key)
-            combo_key = QComboBox()
+            combo_key = DropDownComboBox()
             combo_key.setPlaceholderText("选择私钥...")
             v_new_sec.addWidget(combo_key)
             txt_key_pwd = QLineEdit()
             txt_key_pwd.setEchoMode(QLineEdit.Password)
             txt_key_pwd.setPlaceholderText("输入私钥密码...")
+            txt_key_pwd.setMinimumHeight(40)
             v_new_sec.addWidget(txt_key_pwd)
 
         v_sec.addWidget(self.new_sec_widget)
         self.new_sec_widget.hide()
-        v_right.addWidget(grp_sec)
+        v_scroll.addWidget(grp_sec)
 
         # 2. 输出设置
-        grp_io = QGroupBox("输出路径")
+        grp_io = QGroupBox("📂 输出路径")
         v_io = QVBoxLayout(grp_io)
         v_io.setSpacing(10)
+        v_io.setContentsMargins(14, 20, 14, 14)
 
         h_path = QHBoxLayout()
         h_path.setSpacing(8)
         txt_path = QLineEdit()
         txt_path.setPlaceholderText("默认：覆盖源文件")
         txt_path.setReadOnly(True)
-        txt_path.setFixedHeight(48)  # 固定高度，与按钮一致
-        h_path.addWidget(txt_path, 1)  # stretch=1 让输入框占据剩余空间
+        txt_path.setMinimumHeight(40)
+        h_path.addWidget(txt_path, 1)
 
-        btn_path = ModernButton("...", "normal")
-        btn_path.setFixedSize(90, 48)
+        btn_path = ModernButton("浏览", "normal")
+        btn_path.setFixedSize(72, 40)
         btn_path.clicked.connect(lambda: self.action_select_dir(is_encrypt))
         self.all_buttons.append(btn_path)
         h_path.addWidget(btn_path)
@@ -736,13 +763,13 @@ class MainWindow(QMainWindow):
 
         # 保留目录结构
         chk_struct = CustomCheckBox("保留目录结构")
-        chk_struct.setEnabled(False)  # 默认禁用，选择输出路径后启用
+        chk_struct.setEnabled(False)
         v_io.addWidget(chk_struct)
 
         # 加密/解密文件名（依赖保留目录结构）
         chk_dir_name_enc = None
         if is_encrypt:
-            chk_dir_name_enc = CustomCheckBox("加密文件名")
+            chk_dir_name_enc = CustomCheckBox("加密文件夹名")
             chk_dir_name_enc.setEnabled(False)
             v_io.addWidget(chk_dir_name_enc)
 
@@ -754,7 +781,7 @@ class MainWindow(QMainWindow):
 
             chk_struct.stateChanged.connect(on_struct_toggled)
         else:
-            chk_dir_name_enc = CustomCheckBox("解密文件名")
+            chk_dir_name_enc = CustomCheckBox("解密文件夹名")
             chk_dir_name_enc.setEnabled(False)
             v_io.addWidget(chk_dir_name_enc)
 
@@ -766,31 +793,31 @@ class MainWindow(QMainWindow):
 
             chk_struct.stateChanged.connect(on_struct_toggled_dec)
 
-        v_right.addWidget(grp_io)
+        v_scroll.addWidget(grp_io)
 
         # 3. 高级选项
-        grp_adv = QGroupBox("高级策略")
+        grp_adv = QGroupBox("⚡ 高级策略")
         v_adv = QVBoxLayout(grp_adv)
         v_adv.setSpacing(10)
+        v_adv.setContentsMargins(14, 20, 14, 14)
 
         h_ssd = QHBoxLayout()
         h_ssd.setSpacing(8)
         txt_ssd = QLineEdit()
-        txt_ssd.setPlaceholderText("请先选择缓存路径 ->")
+        txt_ssd.setPlaceholderText("选择 SSD 缓存路径...")
         txt_ssd.setReadOnly(True)
-        txt_ssd.setFixedHeight(48)  # 固定高度，与按钮一致
-        h_ssd.addWidget(txt_ssd, 1)  # stretch=1 让输入框占据剩余空间
+        txt_ssd.setMinimumHeight(40)
+        h_ssd.addWidget(txt_ssd, 1)
 
-        btn_ssd = ModernButton("选择缓存", "normal")
-        btn_ssd.setFixedSize(90, 48)
+        btn_ssd = ModernButton("选择", "normal")
+        btn_ssd.setFixedSize(72, 40)
         btn_ssd.clicked.connect(lambda: self.action_select_ssd(is_encrypt))
         self.all_buttons.append(btn_ssd)
         h_ssd.addWidget(btn_ssd)
         v_adv.addLayout(h_ssd)
 
-        # 逻辑：只有选择了SSD路径，才能勾选启用
         chk_ssd = CustomCheckBox("启用 SSD 加速")
-        chk_ssd.setEnabled(False)  # 默认禁用
+        chk_ssd.setEnabled(False)
         v_adv.addWidget(chk_ssd)
 
         chk_name = None
@@ -805,41 +832,51 @@ class MainWindow(QMainWindow):
             chk_del = CustomCheckBox("解密后移除加密包")
             v_adv.addWidget(chk_del)
 
-        v_right.addWidget(grp_adv)
-        v_right.addStretch()
+        v_scroll.addWidget(grp_adv)
+        v_scroll.addStretch()
 
-        # 状态与控制
+        scroll_area.setWidget(scroll_content)
+        scroll_area.update_theme(self.theme_data)
+        v_right.addWidget(scroll_area, 1)
+
+        # === 底部状态与控制区 - 固定在底部 ===
+        bottom_area = QWidget()
+        bottom_area.setObjectName("BottomArea")
+        v_bottom = QVBoxLayout(bottom_area)
+        v_bottom.setContentsMargins(18, 12, 18, 18)
+        v_bottom.setSpacing(10)
+
         # 状态显示区域
         status_container = QFrame()
         status_container.setObjectName("StatusContainer")
         v_status = QVBoxLayout(status_container)
-        v_status.setContentsMargins(0, 0, 0, 0)
-        v_status.setSpacing(8)
+        v_status.setContentsMargins(14, 10, 14, 10)
+        v_status.setSpacing(6)
 
         lbl_status = QLabel("就绪")
         lbl_status.setAlignment(Qt.AlignCenter)
         lbl_status.setObjectName("StatusLabel")
-        lbl_status.setFont(QFont(get_system_font_family(), 10, QFont.Bold))
+        lbl_status.setFont(QFont(get_system_font_family(), 11, QFont.Bold))
         v_status.addWidget(lbl_status)
 
         pbar = QProgressBar()
         pbar.setValue(0)
-        pbar.setTextVisible(True)
-        pbar.setFormat("%p%")
-        pbar.setFixedHeight(20)
+        pbar.setTextVisible(False)
+        pbar.setFixedHeight(6)
         v_status.addWidget(pbar)
 
-        v_right.addWidget(status_container)
+        v_bottom.addWidget(status_container)
 
+        # 操作按钮区
         stack = QStackedWidget()
-        stack.setFixedHeight(56)  # 增加高度让按钮更舒适
+        stack.setFixedHeight(48)
 
         # Start
         w_start = QWidget()
         l_start = QHBoxLayout(w_start)
         l_start.setContentsMargins(0, 0, 0, 0)
-        btn_run = ModernButton(f"开始{'加密' if is_encrypt else '解密'}", "primary")
-        btn_run.setMinimumHeight(44)  # 设置按钮最小高度
+        btn_run = ModernButton(f"🚀 开始{'加密' if is_encrypt else '解密'}", "primary")
+        btn_run.setMinimumHeight(44)
         btn_run.clicked.connect(self.run_encrypt if is_encrypt else self.run_decrypt)
         self.all_buttons.append(btn_run)
         l_start.addWidget(btn_run)
@@ -849,10 +886,10 @@ class MainWindow(QMainWindow):
         w_ctrl = QWidget()
         l_ctrl = QHBoxLayout(w_ctrl)
         l_ctrl.setContentsMargins(0, 0, 0, 0)
-        btn_pause = ModernButton("挂起", "normal")
+        btn_pause = ModernButton("⏸ 挂起", "normal")
         btn_pause.clicked.connect(self.action_toggle_pause)
         self.all_buttons.append(btn_pause)
-        btn_stop = ModernButton("终止", "danger")
+        btn_stop = ModernButton("⏹ 终止", "danger")
         btn_stop.clicked.connect(self.action_stop_task)
         self.all_buttons.append(btn_stop)
         l_ctrl.addWidget(btn_pause)
@@ -863,17 +900,19 @@ class MainWindow(QMainWindow):
         w_res = QWidget()
         l_res = QHBoxLayout(w_res)
         l_res.setContentsMargins(0, 0, 0, 0)
-        btn_open = ModernButton("打开目录", "normal")
+        btn_open = ModernButton("📂 打开目录", "normal")
         btn_open.clicked.connect(self.action_open_folder)
         self.all_buttons.append(btn_open)
-        btn_back = ModernButton("返回", "normal")
+        btn_back = ModernButton("🔄 返回", "normal")
         btn_back.clicked.connect(lambda: self.reset_ui_state(is_encrypt))
         self.all_buttons.append(btn_back)
         l_res.addWidget(btn_open)
         l_res.addWidget(btn_back)
         stack.addWidget(w_res)
 
-        v_right.addWidget(stack)
+        v_bottom.addWidget(stack)
+        v_right.addWidget(bottom_area)
+
         splitter.addWidget(right_container)
 
         # 设置 Splitter 比例
@@ -882,7 +921,7 @@ class MainWindow(QMainWindow):
 
         # 包装到 Layout
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(splitter)
 
         refs = {
@@ -895,7 +934,8 @@ class MainWindow(QMainWindow):
             "old_sec_widget": self.old_sec_widget,
             "new_sec_widget": self.new_sec_widget,
             "combo_key": combo_key,
-            "txt_key_pwd": txt_key_pwd if not is_encrypt else None
+            "txt_key_pwd": txt_key_pwd if not is_encrypt else None,
+            "scroll_area": scroll_area
         }
         return page, refs
 
@@ -913,13 +953,13 @@ class MainWindow(QMainWindow):
         import json
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setContentsMargins(0, 0, 0, 0)
 
         container = QFrame()
         container.setObjectName("ContentPanel")
         v = QVBoxLayout(container)
-        v.setContentsMargins(30, 30, 30, 30)
-        v.setSpacing(20)
+        v.setContentsMargins(20, 20, 20, 20)
+        v.setSpacing(16)
 
         lbl = QLabel("🔑 密钥管理中心")
         lbl.setObjectName("SectionTitle")
@@ -927,25 +967,35 @@ class MainWindow(QMainWindow):
 
         # 系统切换卡片
         switch_card = QFrame()
-        switch_card.setStyleSheet("background: rgba(92, 107, 192, 0.1); border-radius: 10px; padding: 15px;")
+        switch_card.setStyleSheet("""
+            QFrame {
+                background: rgba(37, 99, 235, 0.08);
+                border: 1px solid rgba(37, 99, 235, 0.15);
+                border-radius: 10px;
+            }
+        """)
+        switch_card.setMinimumHeight(72)
         h_switch = QHBoxLayout(switch_card)
+        h_switch.setContentsMargins(16, 12, 16, 12)
+        h_switch.setSpacing(14)
 
         icon_lbl = QLabel("🔐")
         icon_lbl.setStyleSheet("font-size: 24px;")
         h_switch.addWidget(icon_lbl)
 
         v_status = QVBoxLayout()
+        v_status.setSpacing(2)
         self.lbl_system_status = QLabel("老加密系统")
-        self.lbl_system_status.setStyleSheet("font-weight: bold; font-size: 14px; color: #5c6bc0;")
+        self.lbl_system_status.setStyleSheet("font-weight: 600; font-size: 13px; color: #2563EB;")
         self.lbl_system_desc = QLabel("对称加密 (AES-256)")
-        self.lbl_system_desc.setStyleSheet("color: #888; font-size: 11px;")
+        self.lbl_system_desc.setStyleSheet("color: #64748B; font-size: 11px;")
         v_status.addWidget(self.lbl_system_status)
         v_status.addWidget(self.lbl_system_desc)
         h_switch.addLayout(v_status)
         h_switch.addStretch()
 
         self.btn_switch_system = ModernButton("切换到新系统 →", "primary")
-        self.btn_switch_system.setFixedSize(150, 40)  # 固定宽高
+        self.btn_switch_system.setFixedSize(140, 36)
         self.btn_switch_system.clicked.connect(self.action_switch_system)
         self.all_buttons.append(self.btn_switch_system)
         h_switch.addWidget(self.btn_switch_system)
@@ -953,11 +1003,12 @@ class MainWindow(QMainWindow):
 
         # 密钥列表标题
         lbl_list = QLabel("📋 密钥列表")
-        lbl_list.setStyleSheet("font-weight: bold; color: #5c6bc0; font-size: 12px; margin-top: 10px;")
+        lbl_list.setStyleSheet("font-weight: 600; color: #1A1A2E; font-size: 12px;")
         v.addWidget(lbl_list)
 
         self.key_list = QListWidget()
         self.key_list.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.key_list.setMinimumHeight(180)
         v.addWidget(self.key_list)
 
         # 老系统提示
@@ -965,7 +1016,15 @@ class MainWindow(QMainWindow):
         v_old = QVBoxLayout(self.old_system_widget)
         v_old.setContentsMargins(0, 0, 0, 0)
         lbl_old_tip = QLabel("💡 老系统使用对称加密，加密时直接输入密码即可，无需预先生成密钥")
-        lbl_old_tip.setStyleSheet("color: #888; font-style: italic; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 6px;")
+        lbl_old_tip.setStyleSheet("""
+            color: #64748B;
+            font-style: italic;
+            padding: 12px 14px;
+            background: rgba(0, 0, 0, 0.03);
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            border-radius: 8px;
+            font-size: 11px;
+        """)
         lbl_old_tip.setWordWrap(True)
         v_old.addWidget(lbl_old_tip)
         v.addWidget(self.old_system_widget)
@@ -974,21 +1033,21 @@ class MainWindow(QMainWindow):
         self.new_system_widget = QWidget()
         v_new = QVBoxLayout(self.new_system_widget)
         v_new.setContentsMargins(0, 0, 0, 0)
-        v_new.setSpacing(12)
+        v_new.setSpacing(10)
 
         lbl_new_tip = QLabel("🔐 生成新密钥对")
-        lbl_new_tip.setStyleSheet("font-weight: bold; color: #5c6bc0; font-size: 12px;")
+        lbl_new_tip.setStyleSheet("font-weight: 600; color: #2563EB; font-size: 12px;")
         v_new.addWidget(lbl_new_tip)
 
         h_new = QHBoxLayout()
         h_new.setSpacing(10)
         self.new_key_name_input = QLineEdit()
         self.new_key_name_input.setPlaceholderText("密钥对名称 (例如: my_key)")
-        self.new_key_name_input.setFixedHeight(40)
+        self.new_key_name_input.setMinimumHeight(40)
         self.new_key_password_input = QLineEdit()
         self.new_key_password_input.setPlaceholderText("保护密码")
         self.new_key_password_input.setEchoMode(QLineEdit.Password)
-        self.new_key_password_input.setFixedHeight(40)
+        self.new_key_password_input.setMinimumHeight(40)
         h_new.addWidget(self.new_key_name_input, 2)
         h_new.addWidget(self.new_key_password_input, 1)
         v_new.addLayout(h_new)
@@ -997,7 +1056,7 @@ class MainWindow(QMainWindow):
 
         # 按钮栏
         btn_bar = QHBoxLayout()
-        btn_bar.setSpacing(10)
+        btn_bar.setSpacing(8)
 
         self.btn_gen_new = ModernButton("🔐 生成密钥对", "primary")
         self.btn_gen_new.setMinimumHeight(40)
@@ -1028,6 +1087,7 @@ class MainWindow(QMainWindow):
         btn_bar.addStretch()
 
         v.addLayout(btn_bar)
+        v.addStretch()
         layout.addWidget(container)
         self.content_stack.addWidget(page)
         self.action_refresh_keys()
@@ -1035,12 +1095,13 @@ class MainWindow(QMainWindow):
     def _init_page_log(self):
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setContentsMargins(0, 0, 0, 0)
 
         container = QFrame()
         container.setObjectName("ContentPanel")
         v = QVBoxLayout(container)
         v.setContentsMargins(20, 20, 20, 20)
+        v.setSpacing(12)
 
         lbl = QLabel("📜 系统运行日志")
         lbl.setObjectName("SectionTitle")
@@ -1048,7 +1109,16 @@ class MainWindow(QMainWindow):
 
         self.txt_log = QTextEdit()
         self.txt_log.setReadOnly(True)
-        self.txt_log.setStyleSheet(f"border: none; font-family: {get_monospace_font_qss()};")
+        self.txt_log.setStyleSheet(f"""
+            QTextEdit {{
+                background: rgba(0, 0, 0, 0.02);
+                border: 1px solid rgba(0, 0, 0, 0.08);
+                border-radius: 10px;
+                padding: 10px;
+                font-family: {get_monospace_font_qss()};
+                font-size: 12px;
+            }}
+        """)
         v.addWidget(self.txt_log)
 
         layout.addWidget(container)
@@ -1117,118 +1187,156 @@ class MainWindow(QMainWindow):
         }}
         QFrame#Sidebar {{
             background: {t['sidebar']};
-            border-right: 1px solid {t['glass_border']};
+            border-right: 1px solid rgba(0, 0, 0, 0.05);
             border-radius: 0px;
         }}
         QLabel#AppTitle {{
             color: {t['fg']};
-            font-size: 20px;
-            font-weight: 600;
+            font-size: 17px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
         }}
         QFrame#ContentPanel {{
-            background: {t['glass_bg']};
-            border: 2px solid {t['glass_border']};
-            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            border-radius: 14px;
+        }}
+        QFrame#ConfigPanel {{
+            background: rgba(255, 255, 255, 0.92);
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            border-radius: 14px;
+        }}
+        QWidget#ConfigTitleArea {{
+            background: transparent;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+        }}
+        QWidget#BottomArea {{
+            background: transparent;
+            border-top: 1px solid rgba(0, 0, 0, 0.04);
         }}
         QLabel#SectionTitle {{
             color: {t['fg']};
-            font-size: 15px;
+            font-size: 13px;
             font-weight: 600;
-            margin-bottom: 8px;
+            letter-spacing: 0.2px;
         }}
         QLineEdit, QTextEdit, QComboBox {{
-            background: {t['input_bg']};
-            border: 2px solid {t['glass_border']};
-            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.55);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
             color: {t['fg']};
-            padding: 8px 12px;
-            font-size: 14px;
+            padding: 0 12px;
+            font-size: 12px;
+            selection-background-color: {t['accent']};
+            selection-color: white;
         }}
         QLineEdit:focus, QComboBox:focus {{
-            border: 2px solid {t['accent']};
-            background: {t['glass_bg']};
+            border: 1.5px solid {t['accent']};
+            background: rgba(255, 255, 255, 0.8);
+        }}
+        QLineEdit:hover, QComboBox:hover {{
+            border: 1px solid rgba(0, 0, 0, 0.18);
+        }}
+        QComboBox {{
+            padding-right: 32px;
+            min-height: 40px;
         }}
         QComboBox::drop-down {{
             border: none;
-            width: 30px;
+            width: 32px;
+            subcontrol-position: center right;
+            background: transparent;
         }}
         QComboBox::down-arrow {{
-            image: none;
-            border-left: 4px solid transparent;
-            border-right: 4px solid transparent;
-            border-top: 6px solid {t['text_sec']};
+            width: 10px;
+            height: 10px;
             margin-right: 10px;
         }}
+        QComboBox QAbstractItemView {{
+            background: rgba(255, 255, 255, 0.98);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 6px;
+            selection-background-color: {t['accent']};
+            selection-color: white;
+            padding: 4px;
+            outline: none;
+            margin-top: 2px;
+        }}
         QGroupBox {{
-            background: {t['glass_bg']};
-            border: 2px solid {t['glass_border']};
-            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.45);
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            border-radius: 10px;
             margin-top: 14px;
-            padding: 16px 12px 12px 12px;
+            padding: 18px 14px 14px 14px;
             font-weight: 600;
-            font-size: 14px;
+            font-size: 11px;
             color: {t['fg']};
         }}
         QGroupBox::title {{
             subcontrol-origin: margin;
             left: 14px;
-            padding: 0 10px;
+            padding: 0 6px;
+            color: {t['fg']};
         }}
         QFrame#StatusContainer {{
-            background: {t['glass_bg']};
-            border: 2px solid {t['glass_border']};
-            border-radius: 14px;
-            padding: 14px;
+            background: rgba(255, 255, 255, 0.55);
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            border-radius: 10px;
         }}
         QListWidget {{
-            background: {t['list_bg']};
-            border: 2px solid {t['glass_border']};
-            border-radius: 14px;
-            padding: 8px;
+            background: rgba(255, 255, 255, 0.45);
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            border-radius: 10px;
+            padding: 5px;
+            outline: none;
         }}
         QListWidget::item {{
-            border-radius: 8px;
-            padding: 10px 12px;
-            margin: 3px 0px;
+            border-radius: 6px;
+            padding: 8px 12px;
+            margin: 2px 3px;
+            color: {t['fg']};
         }}
         QListWidget::item:selected {{
             background: {t['accent']};
             color: white;
         }}
-        QListWidget::item:hover {{
-            background: {t['glass_bg']};
+        QListWidget::item:hover:!selected {{
+            background: rgba(0, 0, 0, 0.03);
         }}
         QProgressBar {{
-            background: {t['input_bg']};
-            border: 2px solid {t['glass_border']};
-            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.06);
+            border: none;
+            border-radius: 3px;
             text-align: center;
-            height: 10px;
+            height: 6px;
         }}
         QProgressBar::chunk {{
             background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
                 stop:0 {t['accent']}, stop:1 {t['accent_hover']});
-            border-radius: 6px;
+            border-radius: 3px;
         }}
         QCheckBox {{
-            spacing: 10px;
+            spacing: 8px;
             color: {t['fg']};
-            font-size: 14px;
+            font-size: 12px;
         }}
         QCheckBox::indicator {{
-            width: 22px;
-            height: 22px;
-            border-radius: 6px;
-            border: 2px solid {t['glass_border']};
-            background: {t['input_bg']};
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            border: 1.5px solid rgba(0, 0, 0, 0.18);
+            background: rgba(255, 255, 255, 0.55);
         }}
         QCheckBox::indicator:hover {{
             border-color: {t['accent']};
-            background: {t['glass_bg']};
+            background: rgba(255, 255, 255, 0.85);
         }}
         QCheckBox::indicator:checked {{
             background: {t['accent']};
             border-color: {t['accent']};
+        }}
+        QSplitter::handle {{
+            background: transparent;
         }}
         """
         self.setStyleSheet(qss)
@@ -1240,6 +1348,12 @@ class MainWindow(QMainWindow):
 
         self.ui_enc["list"].update_theme(t)
         self.ui_dec["list"].update_theme(t)
+
+        # 更新滚动区域主题
+        if "scroll_area" in self.ui_enc:
+            self.ui_enc["scroll_area"].update_theme(t)
+        if "scroll_area" in self.ui_dec:
+            self.ui_dec["scroll_area"].update_theme(t)
 
     # ================= 逻辑控制 (Strict Logic) =================
     def check_constraints(self):
@@ -1469,7 +1583,14 @@ class MainWindow(QMainWindow):
                     success, msg = RSAFileCipher.encrypt_file(f, out_path, key_path)
                 else:
                     out_path = os.path.join(out_dir, fname.replace(".enc", ""))
-                    success, msg = RSAFileCipher.decrypt_file(f, out_path, key_path, key_pwd)
+                    # decrypt_file 返回 3 个值: (success, msg, actual_output_path)
+                    result = RSAFileCipher.decrypt_file(f, out_path, key_path, key_pwd)
+                    if len(result) == 3:
+                        success, msg, actual_out_path = result
+                        if success:
+                            out_path = actual_out_path
+                    else:
+                        success, msg = result[0], result[1]
 
                 if success:
                     results["success"].append((f, out_path))
@@ -1487,46 +1608,6 @@ class MainWindow(QMainWindow):
             QApplication.processEvents()
 
         self.on_finished(results, is_encrypt)
-
-        # 详细日志记录
-        task_type = "加密" if is_encrypt else "解密"
-        sys_logger.log(f"========== 开始{task_type}任务 ==========")
-        sys_logger.log(f"任务类型: {task_type}")
-        sys_logger.log(f"文件数量: {len(files)}")
-        sys_logger.log(f"输出目录: {path if path else '原地覆盖'}")
-        sys_logger.log(f"保留目录结构: {keep_struct}")
-        sys_logger.log(f"{'加密' if is_encrypt else '解密'}文件夹名: {enc_dirname}")
-        sys_logger.log(f"SSD 加速: {use_ssd}")
-        if use_ssd:
-            sys_logger.log(f"SSD 缓存路径: {ssd_path}")
-        if is_encrypt:
-            sys_logger.log(f"混淆文件名: {ui['chk_name'].isChecked()}")
-            sys_logger.log(f"完成后粉碎源文件: {ui['chk_del'].isChecked()}")
-        else:
-            sys_logger.log(f"解密后移除加密包: {ui['chk_del'].isChecked()}")
-        sys_logger.log("待处理文件列表:")
-        for i, f in enumerate(files, 1):
-            sys_logger.log(f"  [{i}] {f}")
-        self.append_log(f"启动{task_type}任务，共 {len(files)} 个文件")
-
-        ui["list"].setEnabled(False)
-        ui["pwd"].setEnabled(False)
-        ui["stack"].setCurrentIndex(1)
-        ui["pbar"].setValue(0)
-        ui["status"].setText("初始化引擎...")
-
-        self.is_paused = False
-        self.worker = BatchWorkerThread(
-            files, pwd, is_encrypt,
-            encrypt_filename=ui["chk_name"].isChecked() if is_encrypt and ui["chk_name"] else False,
-            custom_out_dir=path, keep_structure=keep_struct, encrypt_dirname=enc_dirname,
-            use_ssd=use_ssd, ssd_dir=ssd_path
-        )
-
-        self.worker.sig_progress.connect(self.update_progress)
-        self.worker.sig_log.connect(self.append_log)
-        self.worker.sig_finished.connect(lambda r: self.on_finished(r, is_encrypt))
-        self.worker.start()
 
     def update_progress(self, text, val):
         if not self.worker: return

@@ -17,7 +17,7 @@ Encryption Studio - UI 组件模块
     - ThemeSelector: 主题选择器弹出菜单
 
 按钮组件:
-    - ModernButton: Apple 风格主按钮，支持渐变和内发光
+    - ModernButton: Apple 风格主按钮，支持渐变和玻璃降级
     - SystemSwitchButton: 系统切换按钮，带颜色变化和装饰花纹
 
 容器组件:
@@ -46,8 +46,26 @@ from PySide6.QtWidgets import (QPushButton, QListWidget, QAbstractItemView, QChe
 from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QRectF, Property, QRect, QPoint, QParallelAnimationGroup, Signal, QPointF
 from PySide6.QtGui import QPainter, QColor, QPainterPath, QPen, QFont, QBrush, QLinearGradient, QFontMetrics, QGradient
 import os
+import re
 
 from ui.platform_fonts import get_system_font_family
+
+
+def qcolor(value, fallback="#000000", alpha=None):
+    """将主题 token 转成 QColor，兼容 QSS 的 rgba(...) 字符串。"""
+    text = str(value or fallback).strip()
+    match = re.fullmatch(r"rgba\(\s*(\d+),\s*(\d+),\s*(\d+),\s*([0-9.]+)\s*\)", text)
+    if match:
+        r, g, b = (int(match.group(i)) for i in range(1, 4))
+        a_raw = float(match.group(4))
+        color = QColor(r, g, b, int(255 * a_raw if a_raw <= 1 else a_raw))
+    else:
+        color = QColor(text)
+        if not color.isValid():
+            color = QColor(fallback)
+    if alpha is not None:
+        color.setAlpha(alpha)
+    return color
 
 
 class DropDownComboBox(QComboBox):
@@ -76,7 +94,7 @@ class DropDownComboBox(QComboBox):
 
         from ui.themes import THEMES
         theme = self.window().theme_data if hasattr(self.window(), 'theme_data') else THEMES["Light"]
-        arrow_color = QColor(theme.get('fg_secondary', '#64748B'))
+        arrow_color = qcolor(theme.get('fg_secondary', '#64748B'))
 
         # 绘制倒三角箭头
         arrow_x = self.width() - 20
@@ -184,7 +202,10 @@ class SmoothScrollArea(QScrollArea):
 
     def update_theme(self, theme_data):
         """更新滚动条样式 - 毛玻璃风格"""
-        accent = theme_data.get('accent', '#007AFF')
+        is_dark = theme_data.get('fg', '#111827').upper() == '#F8FAFC'
+        handle_bg = "rgba(255, 255, 255, 0.22)" if is_dark else "rgba(15, 23, 42, 0.16)"
+        handle_hover = "rgba(255, 255, 255, 0.34)" if is_dark else "rgba(15, 23, 42, 0.24)"
+        handle_pressed = "rgba(255, 255, 255, 0.44)" if is_dark else "rgba(15, 23, 42, 0.32)"
         self.setStyleSheet(f"""
             QScrollArea {{
                 background: transparent;
@@ -200,15 +221,15 @@ class SmoothScrollArea(QScrollArea):
                 border-radius: 3px;
             }}
             QScrollBar::handle:vertical {{
-                background: rgba(0, 0, 0, 0.12);
+                background: {handle_bg};
                 min-height: 30px;
                 border-radius: 3px;
             }}
             QScrollBar::handle:vertical:hover {{
-                background: rgba(0, 0, 0, 0.20);
+                background: {handle_hover};
             }}
             QScrollBar::handle:vertical:pressed {{
-                background: rgba(0, 0, 0, 0.28);
+                background: {handle_pressed};
             }}
             QScrollBar::add-line:vertical,
             QScrollBar::sub-line:vertical {{
@@ -523,7 +544,7 @@ class CustomCheckBox(QCheckBox):
         if self._check_progress > 0:
             # 选中状态 - 渐变蓝色
             gradient = QLinearGradient(box_rect.topLeft(), box_rect.bottomLeft())
-            accent = QColor(theme['accent'])
+            accent = qcolor(theme['accent'])
             gradient.setColorAt(0, accent.lighter(110))
             gradient.setColorAt(1, accent)
             painter.setBrush(gradient)
@@ -555,7 +576,7 @@ class CustomCheckBox(QCheckBox):
 
         # 绘制文本
         if self.text():
-            painter.setPen(QColor(theme['fg']))
+            painter.setPen(qcolor(theme['fg']))
             font = self.font()
             font.setPointSize(12)
             font.setWeight(QFont.Medium)
@@ -573,7 +594,7 @@ class AnimatedSidebarButton(QPushButton):
         - 悬停动画：鼠标悬停时背景渐变
         - 选中动画：选中时显示蓝色半透明胶囊背景
         - 顶部高光：模拟玻璃厚度的顶部高光线条
-        - 图标 + 文字组合显示
+        - 轻量字标 + 文字组合显示
 
     视觉规范:
         - 选中背景: rgba(0,122,255,0.15) - 半透明蓝色
@@ -588,7 +609,7 @@ class AnimatedSidebarButton(QPushButton):
 
         参数:
             text: 按钮显示文本
-            icon_emoji: 图标 emoji 字符，如 "🔒"
+            icon_emoji: 轻量图标标识，如 "lock" / "key"
             parent: 父组件
         """
         super().__init__(text, parent)
@@ -662,51 +683,55 @@ class AnimatedSidebarButton(QPushButton):
 
         # === 胶囊背景区域 ===
         capsule_rect = rect.adjusted(8, 4, -8, -4)
-        radius = 8  # 圆角 8px，无阴影
+        radius = 10
 
-        # 1. 悬停状态 - 极浅的灰色背景
         if self._hover_progress > 0.01 and self._check_progress < 0.01:
-            hover_bg = QColor(0, 0, 0, int(12 * self._hover_progress))
+            hover_bg = qcolor(theme.get('highlight', 'rgba(255, 255, 255, 0.45)'))
+            hover_bg.setAlpha(int(80 * self._hover_progress))
             painter.setBrush(hover_bg)
             painter.setPen(Qt.NoPen)
             painter.drawRoundedRect(capsule_rect, radius, radius)
 
-        # 2. 选中状态 - 使用主题色
         if self._check_progress > 0.01:
-            # 从主题获取 accent 颜色
             accent_hex = theme.get('accent', '#6366F1')
-            accent_color = QColor(accent_hex)
-            active_bg = QColor(accent_color.red(), accent_color.green(), accent_color.blue(), int(38 * self._check_progress))
+            accent_color = qcolor(accent_hex)
+            active_bg = QColor(accent_color.red(), accent_color.green(), accent_color.blue(), int(34 * self._check_progress))
             painter.setBrush(active_bg)
-            painter.setPen(Qt.NoPen)
+            painter.setPen(QPen(QColor(accent_color.red(), accent_color.green(), accent_color.blue(), int(72 * self._check_progress)), 1.0))
             painter.drawRoundedRect(capsule_rect, radius, radius)
 
-        # === 文字与图标 ===
-        # 图标颜色 - 选中时使用主题色
-        if self._check_progress > 0.5:
-            accent_hex = theme.get('accent', '#6366F1')
-            icon_color = QColor(accent_hex)
-        else:
-            icon_color = QColor(theme.get('fg_secondary', 'rgba(0, 0, 0, 0.50)'))
-        painter.setPen(icon_color)
+        accent_color = qcolor(theme.get('accent', '#007AFF'))
+        badge_color = QColor(
+            accent_color.red(), accent_color.green(), accent_color.blue(),
+            44 if self._check_progress > 0.5 else 18
+        )
+        badge_rect = QRectF(18, 14, 20, 20)
+        painter.setBrush(badge_color)
+        painter.setPen(Qt.NoPen)
+        painter.drawRoundedRect(badge_rect, 6, 6)
 
-        font_icon = self.font()
-        font_icon.setPointSize(17)
+        glyph_map = {
+            "lock": "EN",
+            "unlock": "DE",
+            "key": "KY",
+            "doc": "LG",
+        }
+        painter.setPen(accent_color if self._check_progress > 0.5 else qcolor(theme.get('fg_secondary', '#4B5563')))
+        font_icon = QFont(get_system_font_family(), 7, QFont.Bold)
         painter.setFont(font_icon)
-        painter.drawText(QRectF(16, 0, 32, 48), Qt.AlignCenter, self.icon_emoji)
+        painter.drawText(badge_rect, Qt.AlignCenter, glyph_map.get(self.icon_emoji, "ES"))
 
-        # 文本颜色
         if self._check_progress > 0.5:
             accent_hex = theme.get('accent', '#6366F1')
-            text_color = QColor(accent_hex)
+            text_color = qcolor(accent_hex)
         else:
-            text_color = QColor(theme.get('fg', '#1D1D1F'))
+            text_color = qcolor(theme.get('fg', '#1D1D1F'))
         painter.setPen(text_color)
         font_text = self.font()
         font_text.setPointSize(12)
         font_text.setWeight(QFont.DemiBold)
         painter.setFont(font_text)
-        painter.drawText(QRectF(48, 0, rect.width() - 48, 48), Qt.AlignVCenter | Qt.AlignLeft, self.text())
+        painter.drawText(QRectF(50, 0, rect.width() - 58, 48), Qt.AlignVCenter | Qt.AlignLeft, self.text())
 
 
 class ModernButton(QPushButton):
@@ -776,79 +801,77 @@ class ModernButton(QPushButton):
 
     def update_theme(self, theme):
         if self.color_type == "primary":
-            # Apple Vibrant Blue 渐变 - 内发光效果
             style = f"""
                 QPushButton {{
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #2A85FF, stop:1 #0062FF);
+                    background: {theme.get('accent_gradient', '#007AFF')};
                     color: #ffffff;
-                    border: none;
-                    border-radius: 8px;
-                    padding: 0 28px;
-                    font-weight: 600;
+                    border: 1px solid rgba(255, 255, 255, 0.42);
+                    border-bottom: 1px solid rgba(0, 0, 0, 0.14);
+                    border-radius: 10px;
+                    padding: 0 24px;
+                    font-weight: 700;
                     font-size: 14px;
-                    letter-spacing: 0.3px;
                     min-height: 48px;
                 }}
                 QPushButton:hover {{
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #4296FF, stop:1 #0070FF);
+                    background: {theme.get('accent_gradient_hover', '#2994FF')};
                 }}
                 QPushButton:pressed {{
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #1A75FF, stop:1 #0055EE);
+                    background: {theme.get('accent_active', '#0067D8')};
                 }}
                 QPushButton:disabled {{
-                    background: rgba(0, 0, 0, 0.08);
-                    color: rgba(0, 0, 0, 0.30);
+                    background: {theme.get('card_bg', 'rgba(255, 255, 255, 0.34)')};
+                    color: {theme.get('fg_tertiary', '#8A94A6')};
                 }}
             """
         elif self.color_type == "danger":
             style = f"""
                 QPushButton {{
-                    background: {theme.get('danger', '#FF3B30')};
-                    color: #ffffff;
-                    border: none;
-                    border-radius: 8px;
-                    padding: 0 24px;
+                    background: {theme.get('danger_light', 'rgba(255, 59, 48, 0.12)')};
+                    color: {theme.get('danger', '#FF3B30')};
+                    border: 1px solid rgba(255, 59, 48, 0.24);
+                    border-bottom: 1px solid rgba(255, 59, 48, 0.30);
+                    border-radius: 10px;
+                    padding: 0 22px;
                     font-weight: 600;
                     font-size: 14px;
                     min-height: 44px;
                 }}
                 QPushButton:hover {{
-                    background: {theme.get('danger_hover', '#FF6259')};
+                    background: rgba(255, 59, 48, 0.18);
+                    color: {theme.get('danger_hover', '#FF6961')};
                 }}
                 QPushButton:pressed {{
-                    background: #E52E24;
+                    background: rgba(255, 59, 48, 0.24);
                 }}
                 QPushButton:disabled {{
-                    background: rgba(0, 0, 0, 0.08);
-                    color: rgba(0, 0, 0, 0.30);
+                    background: {theme.get('card_bg', 'rgba(255, 255, 255, 0.34)')};
+                    color: {theme.get('fg_tertiary', '#8A94A6')};
                 }}
             """
         else:
-            # 玻璃质感普通按钮 - 内嵌式
             style = f"""
                 QPushButton {{
-                    background: rgba(0, 0, 0, 0.03);
+                    background: {theme.get('card_bg', 'rgba(255, 255, 255, 0.34)')};
                     color: {theme.get('fg', '#1D1D1F')};
-                    border: 1px solid rgba(0, 0, 0, 0.06);
-                    border-radius: 6px;
-                    padding: 0 20px;
-                    font-weight: 500;
+                    border: 1px solid {theme.get('glass_border_subtle', 'rgba(255, 255, 255, 0.42)')};
+                    border-bottom: 1px solid {theme.get('border_dark', 'rgba(15, 23, 42, 0.08)')};
+                    border-radius: 9px;
+                    padding: 0 18px;
+                    font-weight: 600;
                     font-size: 13px;
                     min-height: 40px;
                 }}
                 QPushButton:hover {{
-                    background: rgba(0, 0, 0, 0.06);
-                    border: 1px solid rgba(0, 0, 0, 0.10);
+                    background: {theme.get('card_bg_hover', 'rgba(255, 255, 255, 0.48)')};
+                    border: 1px solid {theme.get('glass_border', 'rgba(255, 255, 255, 0.64)')};
                 }}
                 QPushButton:pressed {{
-                    background: rgba(0, 0, 0, 0.08);
+                    background: {theme.get('panel', 'rgba(255, 255, 255, 0.46)')};
                 }}
                 QPushButton:disabled {{
-                    background: rgba(0, 0, 0, 0.02);
-                    color: {theme.get('fg_tertiary', 'rgba(0, 0, 0, 0.35)')};
+                    background: {theme.get('surface', 'rgba(255, 255, 255, 0.30)')};
+                    color: {theme.get('fg_tertiary', '#8A94A6')};
                 }}
             """
         self.setStyleSheet(style)
@@ -939,21 +962,14 @@ class DragDropListWidget(QListWidget):
             painter.setRenderHint(QPainter.Antialiasing)
             rect = self.viewport().rect().adjusted(20, 20, -20, -20)
 
-            # 拖拽悬停时的背景 - Hover 时使用主题色
             if self._drag_hover:
-                hover_bg = QColor(255, 255, 255, int(255 * 0.5))
-                painter.fillRect(rect, hover_bg)
-                # 使用主题的 accent 颜色
-                accent_hex = self.theme_data.get('accent', '#6366F1')
-                accent_color = QColor(accent_hex)
-                pen = QPen(QColor(accent_color.red(), accent_color.green(), accent_color.blue(), int(255 * 0.35)))
+                bg = qcolor(self.theme_data.get('dropzone_hover_bg', 'rgba(0, 122, 255, 0.08)'))
+                pen = QPen(qcolor(self.theme_data.get('dropzone_hover_border', 'rgba(0, 122, 255, 0.44)')))
             else:
-                # 正常状态背景 rgba(255,255,255, 0.3)
-                normal_bg = QColor(255, 255, 255, int(255 * 0.3))
-                painter.fillRect(rect, normal_bg)
-                # 虚线要细且柔和 border: 1.5px dashed rgba(0,0,0, 0.15)
-                pen = QPen(QColor(0, 0, 0, int(255 * 0.15)))
+                bg = qcolor(self.theme_data.get('dropzone_bg', 'rgba(255, 255, 255, 0.28)'))
+                pen = QPen(qcolor(self.theme_data.get('dropzone_border', 'rgba(0, 122, 255, 0.24)')))
 
+            painter.setBrush(bg)
             pen.setStyle(Qt.DashLine)
             pen.setWidth(1.5)
             pen.setDashPattern([6, 4])
@@ -961,21 +977,21 @@ class DragDropListWidget(QListWidget):
             painter.drawRoundedRect(rect, 12, 12)
 
             # 提示文字 - 更精致的排版
-            painter.setPen(QColor(self.theme_data.get('fg_secondary', 'rgba(0, 0, 0, 0.50)')))
+            painter.setPen(qcolor(self.theme_data.get('fg_secondary', 'rgba(0, 0, 0, 0.50)')))
             font = QFont(get_system_font_family(), 13)
             font.setWeight(QFont.Medium)
             painter.setFont(font)
 
             # 图标 + 文字
             icon_rect = QRectF(rect.center().x() - 20, rect.center().y() - 40, 40, 40)
-            painter.setPen(QColor(self.theme_data.get('accent', '#6366F1')))
+            painter.setPen(qcolor(self.theme_data.get('accent', '#6366F1')))
             font_icon = QFont()
             font_icon.setPointSize(28)
             painter.setFont(font_icon)
-            painter.drawText(icon_rect, Qt.AlignCenter, "📂")
+            painter.drawText(icon_rect, Qt.AlignCenter, "+")
 
             # 主文字
-            painter.setPen(QColor(self.theme_data.get('fg_secondary', 'rgba(0, 0, 0, 0.50)')))
+            painter.setPen(qcolor(self.theme_data.get('fg_secondary', 'rgba(0, 0, 0, 0.50)')))
             font_text = QFont(get_system_font_family(), 13)
             font_text.setWeight(QFont.Medium)
             painter.setFont(font_text)
@@ -986,7 +1002,7 @@ class DragDropListWidget(QListWidget):
             font_sub = QFont(get_system_font_family(), 11)
             font_sub.setWeight(QFont.Normal)
             painter.setFont(font_sub)
-            painter.setPen(QColor(self.theme_data.get('fg_tertiary', 'rgba(0, 0, 0, 0.35)')))
+            painter.setPen(qcolor(self.theme_data.get('fg_tertiary', 'rgba(0, 0, 0, 0.35)')))
             sub_rect = QRectF(rect.left(), rect.center().y() + 30, rect.width(), 25)
             painter.drawText(sub_rect, Qt.AlignCenter, "支持批量添加，自动识别文件类型")
 
@@ -1029,14 +1045,14 @@ class GlassCard(QFrame):
         shadow_path = QPainterPath()
         shadow_path.addRoundedRect(rect.adjusted(0, 2, 0, 2), radius, radius)
         painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor(0, 0, 0, 12))  # 0.05 * 255 ≈ 12
+        painter.setBrush(qcolor(theme.get('glass_shadow', 'rgba(17, 24, 39, 0.08)')))
         painter.drawPath(shadow_path)
 
         # 2. 绘制渐变背景
         # background: linear-gradient(135deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.4) 100%)
         gradient = QLinearGradient(0, 0, rect.width(), rect.height())
-        gradient.setColorAt(0, QColor(255, 255, 255, int(255 * 0.70)))
-        gradient.setColorAt(1, QColor(255, 255, 255, int(255 * 0.40)))
+        gradient.setColorAt(0, qcolor(theme.get('glass_bg_strong', 'rgba(255, 255, 255, 0.66)')))
+        gradient.setColorAt(1, qcolor(theme.get('glass_bg', 'rgba(255, 255, 255, 0.42)')))
 
         bg_path = QPainterPath()
         bg_path.addRoundedRect(rect, radius, radius)
@@ -1046,7 +1062,7 @@ class GlassCard(QFrame):
 
         # 3. 绘制高光边缘 (1px 描边模拟玻璃切面)
         # border: 1px solid rgba(255, 255, 255, 0.6)
-        painter.setPen(QPen(QColor(255, 255, 255, int(255 * 0.60)), 1.0))
+        painter.setPen(QPen(qcolor(theme.get('glass_border', 'rgba(255, 255, 255, 0.64)')), 1.0))
         painter.setBrush(Qt.NoBrush)
         painter.drawRoundedRect(rect, radius, radius)
 
@@ -1056,7 +1072,7 @@ class GlassCard(QFrame):
         bottom_y = rect.bottom() - 1
         bottom_line.moveTo(rect.left() + radius, bottom_y)
         bottom_line.lineTo(rect.right() - radius, bottom_y)
-        painter.setPen(QPen(QColor(255, 255, 255, int(255 * 0.30)), 1.0))
+        painter.setPen(QPen(qcolor(theme.get('glass_border_subtle', 'rgba(255, 255, 255, 0.42)')), 1.0))
         painter.drawPath(bottom_line)
 
 
@@ -1116,16 +1132,11 @@ class ConfigPanelCard(QFrame):
         rect = QRectF(self.rect())
         radius = 12.0
 
-        # 绘制内嵌式玻璃背景
-        # background: rgba(0, 0, 0, 0.03)
         painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor(0, 0, 0, int(255 * 0.03)))
+        painter.setBrush(qcolor(theme.get('card_bg', 'rgba(255, 255, 255, 0.34)')))
         painter.drawRoundedRect(rect, radius, radius)
 
-        # 内阴影效果
-        # box-shadow: inset 0 1px 2px rgba(0,0,0,0.04)
-        # 注: Qt 不直接支持 inset shadow，通过绘制边缘线模拟
-        painter.setPen(QPen(QColor(0, 0, 0, int(255 * 0.04)), 1.0))
+        painter.setPen(QPen(qcolor(theme.get('glass_border_subtle', 'rgba(255, 255, 255, 0.42)')), 1.0))
         painter.setBrush(Qt.NoBrush)
         painter.drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), radius - 0.5, radius - 0.5)
 
@@ -1398,8 +1409,8 @@ class GlassProgressBar(QWidget):
 
                 # 渐变填充
                 fill_gradient = QLinearGradient(0, 0, fill_width, 0)
-                accent = QColor(theme.get('accent', '#007AFF'))
-                accent_hover = QColor(theme.get('accent_hover', '#3395FF'))
+                accent = qcolor(theme.get('accent', '#007AFF'))
+                accent_hover = qcolor(theme.get('accent_hover', '#3395FF'))
 
                 fill_gradient.setColorAt(0, accent)
                 fill_gradient.setColorAt(0.5, accent_hover)

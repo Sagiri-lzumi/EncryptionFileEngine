@@ -1,296 +1,189 @@
+# -*- coding: utf-8 -*-
+"""
+Encryption Studio 设计令牌。
+
+Light 主题以 macOS Liquid Glass 为第一目标；非 macOS 平台使用同一套
+语义 token 做 Qt/QSS 拟玻璃降级，避免为了兼容而牺牲 macOS 质感。
+"""
+
 THEMES = {
     "Light": {
-        # ============================================
-        # 清新优雅主题 - 类 Notion/Linear 风格
-        # ============================================
+        # macOS native vibrancy
+        "macos_material": "NSVisualEffectMaterialUnderWindowBackground",
+        "native_window_bg": "transparent",
 
-        # === 全局背景 ===
-        # 柔和的灰白色渐变，比 macOS 默认更温暖
-        "bg": "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #F8F9FA, stop:0.5 #F1F3F5, stop:1 #EBEEF2)",
-        "bg_vibrancy": "rgba(248, 249, 250, 0.95)",
+        # Window / surfaces
+        "bg": "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #F8FBFF, stop:0.46 #EDF4FB, stop:1 #E6EEF8)",
+        "bg_vibrancy": "rgba(245, 249, 255, 0.42)",
+        "surface": "rgba(255, 255, 255, 0.30)",
+        "sidebar": "rgba(255, 255, 255, 0.34)",
+        "sidebar_hover": "rgba(255, 255, 255, 0.42)",
+        "sidebar_active": "rgba(0, 122, 255, 0.14)",
+        "sidebar_active_border": "rgba(0, 122, 255, 0.28)",
+        "panel": "rgba(255, 255, 255, 0.46)",
+        "panel_elevated": "rgba(255, 255, 255, 0.62)",
+        "config_panel": "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(255,255,255,0.58), stop:1 rgba(255,255,255,0.34))",
+        "config_panel_border": "rgba(255, 255, 255, 0.62)",
+        "card_bg": "rgba(255, 255, 255, 0.34)",
+        "card_bg_hover": "rgba(255, 255, 255, 0.48)",
 
-        # === 毛玻璃面板 ===
-        "glass_bg": "rgba(255, 255, 255, 0.82)",
-        "glass_gradient_start": "rgba(255, 255, 255, 0.88)",
-        "glass_gradient_end": "rgba(248, 248, 250, 0.75)",
-        "glass_bg_hover": "rgba(255, 255, 255, 0.92)",
-        "glass_bg_strong": "rgba(255, 255, 255, 0.95)",
+        # Glass aliases used by custom painted widgets
+        "glass_bg": "rgba(255, 255, 255, 0.42)",
+        "glass_bg_strong": "rgba(255, 255, 255, 0.66)",
+        "glass_border": "rgba(255, 255, 255, 0.64)",
+        "glass_border_subtle": "rgba(255, 255, 255, 0.42)",
+        "glass_shadow": "rgba(17, 24, 39, 0.08)",
+        "inner_shadow": "rgba(17, 24, 39, 0.06)",
 
-        # === 边框与高光 ===
-        "glass_border": "rgba(0, 0, 0, 0.08)",  # 更柔和的边框
-        "glass_border_bottom": "rgba(0, 0, 0, 0.05)",
-        "glass_border_subtle": "rgba(0, 0, 0, 0.05)",
-        "glass_border_dark": "rgba(0, 0, 0, 0.06)",
+        # Apple blue
+        "accent": "#007AFF",
+        "accent_hover": "#2994FF",
+        "accent_active": "#0067D8",
+        "accent_light": "rgba(0, 122, 255, 0.12)",
+        "accent_subtle": "rgba(0, 122, 255, 0.18)",
+        "accent_gradient": "qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #38A1FF, stop:1 #007AFF)",
+        "accent_gradient_hover": "qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5BB3FF, stop:1 #168BFF)",
 
-        # === 阴影系统 ===
-        "shadow_sm": "0 1px 3px rgba(0, 0, 0, 0.04)",
-        "shadow_glass": "0 4px 16px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04)",
-        "shadow_md": "0 2px 8px rgba(0, 0, 0, 0.05)",
-        "shadow_lg": "0 4px 24px rgba(0, 0, 0, 0.07)",
-        "shadow_xl": "0 8px 32px rgba(0, 0, 0, 0.08)",
-        "shadow_glow": "0 2px 8px rgba(99, 102, 241, 0.15)",  # 使用紫蓝色
-        "shadow_primary_btn": "0 2px 4px rgba(99, 102, 241, 0.25)",
+        # State
+        "success": "#34C759",
+        "success_light": "rgba(52, 199, 89, 0.12)",
+        "danger": "#FF3B30",
+        "danger_hover": "#FF6961",
+        "danger_light": "rgba(255, 59, 48, 0.12)",
+        "warning": "#FF9F0A",
 
-        # === 侧边栏 ===
-        "sidebar": "rgba(249, 250, 251, 0.90)",
-        "sidebar_hover": "rgba(0, 0, 0, 0.04)",
-        "sidebar_active": "rgba(99, 102, 241, 0.12)",  # 紫蓝色选中
-        "sidebar_active_border": "rgba(99, 102, 241, 0.25)",
-        "sidebar_pill_radius": "8px",
+        # Text
+        "fg": "#111827",
+        "fg_secondary": "#4B5563",
+        "fg_tertiary": "#8A94A6",
+        "fg_muted": "#B7BFCC",
 
-        # === 内容面板 ===
-        "panel": "rgba(255, 255, 255, 0.70)",
-        "panel_elevated": "rgba(255, 255, 255, 0.85)",
-        "panel_border": "rgba(0, 0, 0, 0.06)",
+        # Lines
+        "border": "rgba(255, 255, 255, 0.54)",
+        "border_dark": "rgba(15, 23, 42, 0.08)",
+        "border_focus": "rgba(0, 122, 255, 0.56)",
+        "separator": "rgba(15, 23, 42, 0.08)",
+        "highlight": "rgba(255, 255, 255, 0.78)",
 
-        # === 拖拽区域 ===
-        "dropzone_bg": "rgba(248, 250, 251, 0.60)",
-        "dropzone_border": "rgba(99, 102, 241, 0.20)",
-        "dropzone_border_dash": "rgba(0, 0, 0, 0.10)",
-        "dropzone_hover_bg": "rgba(99, 102, 241, 0.06)",
+        # Inputs
+        "input_bg": "rgba(255, 255, 255, 0.54)",
+        "input_bg_hover": "rgba(255, 255, 255, 0.68)",
+        "input_border": "rgba(15, 23, 42, 0.08)",
 
-        # === 输入控件 ===
-        "input_bg": "rgba(249, 250, 251, 0.80)",
-        "input_bg_focus": "rgba(255, 255, 255, 0.95)",
-        "input_border": "rgba(0, 0, 0, 0.08)",
-        "input_border_focus": "rgba(99, 102, 241, 0.40)",
-        "input_shadow_inset": "inset 0 1px 2px rgba(0, 0, 0, 0.03)",
-        "input_radius": "8px",
+        # Typography
+        "sidebar_font_size": "13px",
+        "sidebar_font_weight": "600",
+        "section_title_size": "15px",
+        "section_title_weight": "700",
+        "section_title_letter": "0px",
+        "body_size": "13px",
+        "body_weight": "400",
+        "caption_size": "11px",
+        "caption_weight": "400",
 
-        # === 色彩系统 ===
-        "fg": "#1F2937",
-        "fg_secondary": "rgba(31, 41, 55, 0.60)",
-        "fg_tertiary": "rgba(31, 41, 55, 0.40)",
-        "fg_muted": "rgba(31, 41, 55, 0.30)",
-
-        # 主色调：紫蓝色 (Indigo) 比蓝色更优雅
-        "accent": "#6366F1",
-        "accent_hover": "#818CF8",
-        "accent_active": "#4F46E5",
-        "accent_gradient": "qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #818CF8, stop:1 #6366F1)",
-        "accent_gradient_hover": "qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #A5B4FC, stop:1 #818CF8)",
-        "accent_glow": "rgba(99, 102, 241, 0.20)",
-
-        # 状态色
-        "danger": "#EF4444",
-        "danger_hover": "#F87171",
-        "success": "#10B981",
-        "warning": "#F59E0B",
-
-        # === 圆角系统 ===
+        # Geometry
         "radius_xs": "6px",
         "radius_sm": "8px",
-        "radius_md": "12px",
+        "radius_md": "10px",
         "radius_lg": "16px",
         "radius_xl": "20px",
-        "radius_pill": "8px",
 
-        # === 其他 ===
-        "border": "rgba(0, 0, 0, 0.06)",
-        "separator": "rgba(0, 0, 0, 0.05)",
-        "text_sec": "rgba(31, 41, 55, 0.55)",
-        "list_bg": "rgba(249, 250, 251, 0.60)",
-        "list_item_hover": "rgba(0, 0, 0, 0.03)",
-        "list_item_selected": "rgba(99, 102, 241, 0.15)",
+        # QSS cannot render box-shadow; these are semantic notes for custom painters.
+        "shadow_sm": "rgba(15, 23, 42, 0.06)",
+        "shadow_md": "rgba(15, 23, 42, 0.08)",
+        "shadow_lg": "rgba(15, 23, 42, 0.10)",
 
-        # === GroupBox ===
-        "card_bg": "rgba(249, 250, 251, 0.50)",
-        "card_border": "rgba(0, 0, 0, 0.04)",
+        # Lists / drop zone
+        "dropzone_bg": "rgba(255, 255, 255, 0.28)",
+        "dropzone_border": "rgba(0, 122, 255, 0.24)",
+        "dropzone_hover_bg": "rgba(0, 122, 255, 0.08)",
+        "dropzone_hover_border": "rgba(0, 122, 255, 0.44)",
+        "list_bg": "rgba(255, 255, 255, 0.30)",
+        "list_item_hover": "rgba(255, 255, 255, 0.44)",
+        "list_item_selected": "rgba(0, 122, 255, 0.16)",
     },
 
     "Dark": {
-        # ============================================
-        # Dark Mode - 深邃优雅
-        # ============================================
+        "macos_material": "NSVisualEffectMaterialHUDWindow",
+        "native_window_bg": "transparent",
 
-        # === 全局背景 ===
-        "bg": "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #0F0F11, stop:0.5 #16161A, stop:1 #0F0F11)",
-        "bg_vibrancy": "rgba(15, 15, 17, 0.95)",
+        "bg": "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #0B1020, stop:0.48 #111827, stop:1 #0B1020)",
+        "bg_vibrancy": "rgba(10, 16, 32, 0.58)",
+        "surface": "rgba(15, 23, 42, 0.42)",
+        "sidebar": "rgba(15, 23, 42, 0.54)",
+        "sidebar_hover": "rgba(255, 255, 255, 0.07)",
+        "sidebar_active": "rgba(10, 132, 255, 0.18)",
+        "sidebar_active_border": "rgba(10, 132, 255, 0.34)",
+        "panel": "rgba(30, 41, 59, 0.54)",
+        "panel_elevated": "rgba(51, 65, 85, 0.66)",
+        "config_panel": "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(30,41,59,0.72), stop:1 rgba(15,23,42,0.52))",
+        "config_panel_border": "rgba(255, 255, 255, 0.10)",
+        "card_bg": "rgba(15, 23, 42, 0.34)",
+        "card_bg_hover": "rgba(30, 41, 59, 0.52)",
 
-        # === 毛玻璃面板 ===
-        "glass_bg": "rgba(30, 30, 35, 0.70)",
-        "glass_gradient_start": "rgba(38, 38, 42, 0.80)",
-        "glass_gradient_end": "rgba(26, 26, 30, 0.60)",
-        "glass_bg_hover": "rgba(38, 38, 42, 0.80)",
-        "glass_bg_strong": "rgba(42, 42, 47, 0.90)",
+        "glass_bg": "rgba(30, 41, 59, 0.48)",
+        "glass_bg_strong": "rgba(51, 65, 85, 0.68)",
+        "glass_border": "rgba(255, 255, 255, 0.13)",
+        "glass_border_subtle": "rgba(255, 255, 255, 0.08)",
+        "glass_shadow": "rgba(0, 0, 0, 0.32)",
+        "inner_shadow": "rgba(0, 0, 0, 0.22)",
 
-        # === 边框与高光 ===
-        "glass_border": "rgba(255, 255, 255, 0.08)",
-        "glass_border_bottom": "rgba(255, 255, 255, 0.04)",
-        "glass_border_subtle": "rgba(255, 255, 255, 0.06)",
-        "glass_border_dark": "rgba(0, 0, 0, 0.30)",
+        "accent": "#0A84FF",
+        "accent_hover": "#3AA0FF",
+        "accent_active": "#006EDB",
+        "accent_light": "rgba(10, 132, 255, 0.16)",
+        "accent_subtle": "rgba(10, 132, 255, 0.22)",
+        "accent_gradient": "qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3AA0FF, stop:1 #0A84FF)",
+        "accent_gradient_hover": "qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #63B6FF, stop:1 #2B98FF)",
 
-        # === 阴影系统 ===
-        "shadow_sm": "0 1px 3px rgba(0, 0, 0, 0.25)",
-        "shadow_glass": "0 4px 16px rgba(0, 0, 0, 0.30), 0 1px 2px rgba(0, 0, 0, 0.20)",
-        "shadow_md": "0 2px 8px rgba(0, 0, 0, 0.25)",
-        "shadow_lg": "0 4px 24px rgba(0, 0, 0, 0.30)",
-        "shadow_xl": "0 8px 32px rgba(0, 0, 0, 0.35)",
-        "shadow_glow": "0 2px 8px rgba(129, 140, 248, 0.20)",
-        "shadow_primary_btn": "0 2px 4px rgba(129, 140, 248, 0.30)",
+        "success": "#30D158",
+        "success_light": "rgba(48, 209, 88, 0.15)",
+        "danger": "#FF453A",
+        "danger_hover": "#FF6961",
+        "danger_light": "rgba(255, 69, 58, 0.14)",
+        "warning": "#FFD60A",
 
-        # === 侧边栏 ===
-        "sidebar": "rgba(22, 22, 26, 0.80)",
-        "sidebar_hover": "rgba(255, 255, 255, 0.05)",
-        "sidebar_active": "rgba(129, 140, 248, 0.15)",
-        "sidebar_active_border": "rgba(129, 140, 248, 0.30)",
-        "sidebar_pill_radius": "8px",
+        "fg": "#F8FAFC",
+        "fg_secondary": "#CBD5E1",
+        "fg_tertiary": "#94A3B8",
+        "fg_muted": "#64748B",
 
-        # === 内容面板 ===
-        "panel": "rgba(28, 28, 32, 0.65)",
-        "panel_elevated": "rgba(35, 35, 40, 0.80)",
-        "panel_border": "rgba(255, 255, 255, 0.06)",
+        "border": "rgba(255, 255, 255, 0.11)",
+        "border_dark": "rgba(0, 0, 0, 0.26)",
+        "border_focus": "rgba(10, 132, 255, 0.62)",
+        "separator": "rgba(255, 255, 255, 0.08)",
+        "highlight": "rgba(255, 255, 255, 0.16)",
 
-        # === 拖拽区域 ===
-        "dropzone_bg": "rgba(28, 28, 32, 0.50)",
-        "dropzone_border": "rgba(129, 140, 248, 0.20)",
-        "dropzone_border_dash": "rgba(255, 255, 255, 0.08)",
-        "dropzone_hover_bg": "rgba(129, 140, 248, 0.08)",
+        "input_bg": "rgba(15, 23, 42, 0.48)",
+        "input_bg_hover": "rgba(30, 41, 59, 0.62)",
+        "input_border": "rgba(255, 255, 255, 0.10)",
 
-        # === 输入控件 ===
-        "input_bg": "rgba(0, 0, 0, 0.20)",
-        "input_bg_focus": "rgba(45, 45, 50, 0.80)",
-        "input_border": "rgba(255, 255, 255, 0.08)",
-        "input_border_focus": "rgba(129, 140, 248, 0.50)",
-        "input_shadow_inset": "inset 0 1px 2px rgba(0, 0, 0, 0.20)",
-        "input_radius": "8px",
+        "sidebar_font_size": "13px",
+        "sidebar_font_weight": "600",
+        "section_title_size": "15px",
+        "section_title_weight": "700",
+        "section_title_letter": "0px",
+        "body_size": "13px",
+        "body_weight": "400",
+        "caption_size": "11px",
+        "caption_weight": "400",
 
-        # === 色彩系统 ===
-        "fg": "#F9FAFB",
-        "fg_secondary": "rgba(249, 250, 251, 0.65)",
-        "fg_tertiary": "rgba(249, 250, 251, 0.45)",
-        "fg_muted": "rgba(249, 250, 251, 0.35)",
-
-        # 主色调：紫蓝色
-        "accent": "#818CF8",
-        "accent_hover": "#A5B4FC",
-        "accent_active": "#6366F1",
-        "accent_gradient": "qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #A5B4FC, stop:1 #818CF8)",
-        "accent_gradient_hover": "qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #C7D2FE, stop:1 #A5B4FC)",
-        "accent_glow": "rgba(129, 140, 248, 0.25)",
-
-        # 状态色
-        "danger": "#F87171",
-        "danger_hover": "#FCA5A5",
-        "success": "#34D399",
-        "warning": "#FBBF24",
-
-        # === 圆角系统 ===
         "radius_xs": "6px",
         "radius_sm": "8px",
-        "radius_md": "12px",
+        "radius_md": "10px",
         "radius_lg": "16px",
         "radius_xl": "20px",
-        "radius_pill": "8px",
 
-        # === 其他 ===
-        "border": "rgba(255, 255, 255, 0.08)",
-        "separator": "rgba(255, 255, 255, 0.06)",
-        "text_sec": "rgba(249, 250, 251, 0.55)",
-        "list_bg": "rgba(35, 35, 40, 0.50)",
-        "list_item_hover": "rgba(255, 255, 255, 0.04)",
-        "list_item_selected": "rgba(129, 140, 248, 0.20)",
+        "shadow_sm": "rgba(0, 0, 0, 0.20)",
+        "shadow_md": "rgba(0, 0, 0, 0.28)",
+        "shadow_lg": "rgba(0, 0, 0, 0.36)",
 
-        # === GroupBox ===
-        "card_bg": "rgba(0, 0, 0, 0.15)",
-        "card_border": "rgba(255, 255, 255, 0.05)",
+        "dropzone_bg": "rgba(15, 23, 42, 0.30)",
+        "dropzone_border": "rgba(10, 132, 255, 0.30)",
+        "dropzone_hover_bg": "rgba(10, 132, 255, 0.12)",
+        "dropzone_hover_border": "rgba(10, 132, 255, 0.52)",
+        "list_bg": "rgba(15, 23, 42, 0.36)",
+        "list_item_hover": "rgba(255, 255, 255, 0.06)",
+        "list_item_selected": "rgba(10, 132, 255, 0.22)",
     },
-
-    "Graphite": {
-        # ============================================
-        # Graphite - 经典石墨灰
-        # ============================================
-
-        # === 全局背景 ===
-        "bg": "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #E8E9EB, stop:0.5 #E2E4E7, stop:1 #DCDDE1)",
-        "bg_vibrancy": "rgba(232, 233, 235, 0.95)",
-
-        # === 毛玻璃面板 ===
-        "glass_bg": "rgba(255, 255, 255, 0.75)",
-        "glass_gradient_start": "rgba(255, 255, 255, 0.82)",
-        "glass_gradient_end": "rgba(245, 245, 248, 0.68)",
-        "glass_bg_hover": "rgba(255, 255, 255, 0.85)",
-        "glass_bg_strong": "rgba(255, 255, 255, 0.90)",
-
-        # === 边框与高光 ===
-        "glass_border": "rgba(0, 0, 0, 0.08)",
-        "glass_border_bottom": "rgba(0, 0, 0, 0.04)",
-        "glass_border_subtle": "rgba(0, 0, 0, 0.05)",
-        "glass_border_dark": "rgba(0, 0, 0, 0.05)",
-
-        # === 阴影系统 ===
-        "shadow_sm": "0 1px 3px rgba(0, 0, 0, 0.05)",
-        "shadow_glass": "0 4px 16px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04)",
-        "shadow_md": "0 2px 8px rgba(0, 0, 0, 0.06)",
-        "shadow_lg": "0 4px 24px rgba(0, 0, 0, 0.07)",
-        "shadow_xl": "0 8px 32px rgba(0, 0, 0, 0.08)",
-        "shadow_glow": "0 2px 8px rgba(75, 85, 99, 0.15)",
-        "shadow_primary_btn": "0 2px 4px rgba(75, 85, 99, 0.20)",
-
-        # === 侧边栏 ===
-        "sidebar": "rgba(240, 241, 245, 0.90)",
-        "sidebar_hover": "rgba(0, 0, 0, 0.04)",
-        "sidebar_active": "rgba(75, 85, 99, 0.12)",
-        "sidebar_active_border": "rgba(75, 85, 99, 0.25)",
-        "sidebar_pill_radius": "8px",
-
-        # === 内容面板 ===
-        "panel": "rgba(255, 255, 255, 0.65)",
-        "panel_elevated": "rgba(255, 255, 255, 0.80)",
-        "panel_border": "rgba(0, 0, 0, 0.06)",
-
-        # === 拖拽区域 ===
-        "dropzone_bg": "rgba(245, 246, 250, 0.60)",
-        "dropzone_border": "rgba(75, 85, 99, 0.20)",
-        "dropzone_border_dash": "rgba(0, 0, 0, 0.10)",
-        "dropzone_hover_bg": "rgba(75, 85, 99, 0.06)",
-
-        # === 输入控件 ===
-        "input_bg": "rgba(245, 246, 250, 0.80)",
-        "input_bg_focus": "rgba(255, 255, 255, 0.90)",
-        "input_border": "rgba(0, 0, 0, 0.08)",
-        "input_border_focus": "rgba(75, 85, 99, 0.40)",
-        "input_shadow_inset": "inset 0 1px 2px rgba(0, 0, 0, 0.03)",
-        "input_radius": "8px",
-
-        # === 色彩系统 ===
-        "fg": "#1F2937",
-        "fg_secondary": "rgba(31, 41, 55, 0.60)",
-        "fg_tertiary": "rgba(31, 41, 55, 0.40)",
-        "fg_muted": "rgba(31, 41, 55, 0.30)",
-
-        # 主色调：石墨灰
-        "accent": "#4B5563",
-        "accent_hover": "#6B7280",
-        "accent_active": "#374151",
-        "accent_gradient": "qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6B7280, stop:1 #4B5563)",
-        "accent_gradient_hover": "qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #7C8490, stop:1 #5B6370)",
-        "accent_glow": "rgba(75, 85, 99, 0.15)",
-
-        # 状态色
-        "danger": "#DC2626",
-        "danger_hover": "#EF4444",
-        "success": "#059669",
-        "warning": "#D97706",
-
-        # === 圆角系统 ===
-        "radius_xs": "6px",
-        "radius_sm": "8px",
-        "radius_md": "12px",
-        "radius_lg": "16px",
-        "radius_xl": "20px",
-        "radius_pill": "8px",
-
-        # === 其他 ===
-        "border": "rgba(0, 0, 0, 0.06)",
-        "separator": "rgba(0, 0, 0, 0.05)",
-        "text_sec": "rgba(31, 41, 55, 0.55)",
-        "list_bg": "rgba(240, 241, 245, 0.60)",
-        "list_item_hover": "rgba(0, 0, 0, 0.03)",
-        "list_item_selected": "rgba(75, 85, 99, 0.12)",
-
-        # === GroupBox ===
-        "card_bg": "rgba(245, 246, 250, 0.50)",
-        "card_border": "rgba(0, 0, 0, 0.04)",
-    }
 }

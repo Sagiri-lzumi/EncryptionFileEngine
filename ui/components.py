@@ -265,6 +265,44 @@ class InspectorSection(QFrame):
         return self._content_layout
 
 
+class KeyPairListRow(QFrame):
+    """Compact visual row for one RSA key pair in the key manager."""
+    def __init__(self, key_name, public_file=None, private_file=None, parent=None):
+        super().__init__(parent)
+        self.setObjectName("KeyPairListRow")
+        self.setMinimumHeight(60)
+
+        root = QHBoxLayout(self)
+        root.setContentsMargins(12, 8, 12, 8)
+        root.setSpacing(10)
+
+        root.addWidget(IconBadge("keypair", 34, self, accent=True))
+
+        text_box = QVBoxLayout()
+        text_box.setContentsMargins(0, 0, 0, 0)
+        text_box.setSpacing(2)
+
+        self.title_label = QLabel(key_name)
+        self.title_label.setObjectName("KeyPairName")
+        self.title_label.setToolTip(key_name)
+        text_box.addWidget(self.title_label)
+
+        public_text = public_file or "缺少公钥"
+        private_text = private_file or "缺少私钥"
+        self.meta_label = QLabel(f"公钥 {public_text}   ·   私钥 {private_text}")
+        self.meta_label.setObjectName("KeyPairMeta")
+        self.meta_label.setToolTip(f"公钥: {public_text}\n私钥: {private_text}")
+        text_box.addWidget(self.meta_label)
+
+        root.addLayout(text_box, 1)
+
+        ready = bool(public_file and private_file)
+        self.status_label = QLabel("完整" if ready else "缺失")
+        self.status_label.setObjectName("KeyPairStatus")
+        self.status_label.setProperty("state", "ready" if ready else "warning")
+        root.addWidget(self.status_label)
+
+
 class ExecutionFooter(QFrame):
     """Bottom execution area combining status, progress, and action stack."""
     def __init__(self, parent=None):
@@ -1264,19 +1302,26 @@ class DragDropListWidget(QListWidget):
             painter.setFont(font)
 
             # 图标 + 文字
-            icon_rect = QRectF(rect.center().x() - 20, rect.center().y() - 40, 40, 40)
-            painter.setPen(qcolor(self.theme_data.get('accent', '#6366F1')))
-            font_icon = QFont()
-            font_icon.setPointSize(28)
-            painter.setFont(font_icon)
-            painter.drawText(icon_rect, Qt.AlignCenter, "+")
+            icon_rect = QRectF(rect.center().x() - 22, rect.center().y() - 46, 44, 44)
+            icon_bg = qcolor(self.theme_data.get('accent_light', 'rgba(0, 122, 255, 0.12)'))
+            icon_border = qcolor(self.theme_data.get('sidebar_active_border', 'rgba(0, 122, 255, 0.28)'))
+            painter.setBrush(icon_bg)
+            painter.setPen(QPen(icon_border, 1.0))
+            painter.drawRoundedRect(icon_rect, 12, 12)
+            draw_icon(
+                painter,
+                "folder-plus",
+                icon_rect.adjusted(10, 10, -10, -10),
+                qcolor(self.theme_data.get('accent', '#007AFF')),
+                2.0,
+            )
 
             # 主文字
             painter.setPen(qcolor(self.theme_data.get('fg_secondary', 'rgba(0, 0, 0, 0.50)')))
             font_text = QFont(get_system_font_family(), 13)
             font_text.setWeight(QFont.Medium)
             painter.setFont(font_text)
-            text_rect = QRectF(rect.left(), rect.center().y() + 5, rect.width(), 30)
+            text_rect = QRectF(rect.left(), rect.center().y() + 8, rect.width(), 30)
             painter.drawText(text_rect, Qt.AlignCenter, "拖拽文件或文件夹到此处")
 
             # 副文字
@@ -1284,8 +1329,8 @@ class DragDropListWidget(QListWidget):
             font_sub.setWeight(QFont.Normal)
             painter.setFont(font_sub)
             painter.setPen(qcolor(self.theme_data.get('fg_tertiary', 'rgba(0, 0, 0, 0.35)')))
-            sub_rect = QRectF(rect.left(), rect.center().y() + 30, rect.width(), 25)
-            painter.drawText(sub_rect, Qt.AlignCenter, "支持批量添加，自动识别文件类型")
+            sub_rect = QRectF(rect.left(), rect.center().y() + 32, rect.width(), 25)
+            painter.drawText(sub_rect, Qt.AlignCenter, "支持批量添加，也可以使用下方按钮")
 
 
 class GlassInputField(QLineEdit):
@@ -1496,15 +1541,13 @@ class SystemSwitchButton(QPushButton):
         radius = 6.0
 
         # === 根据切换进度选择渐变颜色 ===
-        # 老系统 (0.0): 紫蓝色渐变 #818CF8 → #6366F1
-        # 新系统 (1.0): 粉色渐变 #F472B6 → #EC4899 (更鲜明的对比)
+        # 统一跟随主题 token，避免系统切换按钮脱离整体视觉体系。
         progress = self._switch_progress
 
-        # 插值计算颜色 - 统一使用主题色
-        old_start = QColor(129, 140, 248)   # #818CF8 (紫蓝)
-        old_end = QColor(99, 102, 241)       # #6366F1
-        new_start = QColor(244, 114, 182)   # #F472B6 (粉色)
-        new_end = QColor(236, 72, 153)      # #EC4899
+        old_start = qcolor(theme.get('accent_hover', '#2994FF'))
+        old_end = qcolor(theme.get('accent', '#007AFF'))
+        new_start = qcolor(theme.get('success', '#34C759')).lighter(112)
+        new_end = qcolor(theme.get('success', '#34C759'))
 
         start_color = QColor(
             int(old_start.red() * (1 - progress) + new_start.red() * progress),

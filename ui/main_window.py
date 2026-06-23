@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QLabel, QFileDialog,
                                QGroupBox, QTextEdit, QLineEdit, QProgressBar,
                                QMessageBox, QListWidget, QAbstractItemView,
-                               QFrame, QStackedWidget, QApplication, QCheckBox,
+                               QListWidgetItem, QFrame, QStackedWidget, QApplication, QCheckBox,
                                QSplitter, QGraphicsDropShadowEffect, QSizePolicy,
                                QSystemTrayIcon, QMenu, QComboBox, QSpacerItem)
 from PySide6.QtCore import (QThread, Signal, Qt, QUrl, QPropertyAnimation,
@@ -50,7 +50,8 @@ from ui.components import (AnimatedSidebarButton, ModernButton, DragDropListWidg
                            CustomCheckBox, ThemeSelector, SmoothScrollArea,
                            DropDownComboBox, SystemSwitchButton, GlassProgressBar,
                            CleanStackedWidget, PageSurface, SectionHeader, IconBadge,
-                           TaskWorkspacePanel, InspectorSection, ExecutionFooter)
+                           TaskWorkspacePanel, InspectorSection, ExecutionFooter,
+                           KeyPairListRow)
 from ui.platform_fonts import get_monospace_font_qss, get_system_font_family, get_system_font_qss
 from ui.utils import ensure_long_path, format_size, get_drive_root
 
@@ -1287,9 +1288,11 @@ class MainWindow(QMainWindow):
         v.addWidget(self.key_list_header)
 
         self.key_list = QListWidget()
+        self.key_list.setObjectName("KeyPairList")
         self.key_list.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.key_list.setMinimumHeight(280)  # 增加密钥列表高度
-        v.addWidget(self.key_list, 1)  # 添加拉伸因子，让列表占据更多空间
+        self.key_list.setMinimumHeight(180)
+        self.key_list.setMaximumHeight(260)
+        v.addWidget(self.key_list)
 
         # 老系统提示
         self.old_system_widget = QFrame()
@@ -1306,6 +1309,7 @@ class MainWindow(QMainWindow):
         # 新系统输入框 (紧凑布局)
         self.new_system_widget = QFrame()
         self.new_system_widget.setObjectName("KeyActionPanel")
+        self.new_system_widget.setMaximumHeight(114)
         v_new = QVBoxLayout(self.new_system_widget)
         v_new.setContentsMargins(16, 14, 16, 14)
         v_new.setSpacing(10)
@@ -1497,16 +1501,16 @@ class MainWindow(QMainWindow):
         }}
 
         QFrame#ContentPanel {{
-            background: {t['panel']};
+            background: {t['panel_elevated']};
             border: 1px solid {t['glass_border']};
             border-bottom: 1px solid {t['glass_border_subtle']};
             border-radius: {t['radius_lg']};
         }}
         QFrame#TaskWorkspacePanel {{
-            background: {t['panel']};
+            background: {t['panel_elevated']};
             border: 1px solid {t['glass_border']};
-            border-bottom: 1px solid {t['border_dark']};
-            border-radius: 10px;
+            border-bottom: 1px solid {t['glass_border_subtle']};
+            border-radius: 14px;
         }}
         QLabel#WorkspaceTitle {{
             color: {t['fg']};
@@ -1534,10 +1538,10 @@ class MainWindow(QMainWindow):
         }}
 
         QFrame#ConfigPanel {{
-            background: {t['config_panel']};
+            background: {t['panel_elevated']};
             border: 1px solid {t['config_panel_border']};
             border-bottom: 1px solid {t['glass_border_subtle']};
-            border-radius: 10px;
+            border-radius: 14px;
         }}
         QWidget#ConfigTitleArea {{
             background: transparent;
@@ -1677,9 +1681,9 @@ class MainWindow(QMainWindow):
 
         QFrame#ConfigSection,
         QFrame#InspectorSection {{
-            background: {t['card_bg']};
+            background: {t['surface']};
             border: 1px solid {t['glass_border_subtle']};
-            border-bottom: 1px solid {t['border_dark']};
+            border-bottom: 1px solid {t['glass_border_subtle']};
             border-radius: 10px;
         }}
 
@@ -1725,11 +1729,22 @@ class MainWindow(QMainWindow):
             border-radius: 12px;
             padding: 8px;
         }}
+        QListWidget#KeyPairList {{
+            background: {t['list_bg']};
+            border: 1px solid {t['glass_border_subtle']};
+            border-radius: 12px;
+            padding: 6px;
+        }}
         QListWidget::item {{
             border-radius: 8px;
             padding: 10px 14px;
             margin: 3px 4px;
             color: {t['fg']};
+        }}
+        QListWidget#KeyPairList::item {{
+            padding: 0;
+            margin: 3px 2px;
+            border-radius: 10px;
         }}
         QListWidget::item:selected {{
             background: {t['list_item_selected']};
@@ -1819,6 +1834,36 @@ class MainWindow(QMainWindow):
             padding: 0;
             background: transparent;
             border: none;
+        }}
+        QFrame#KeyPairListRow {{
+            background: transparent;
+            border: none;
+        }}
+        QLabel#KeyPairName {{
+            color: {t['fg']};
+            font-size: 13px;
+            font-weight: 800;
+        }}
+        QLabel#KeyPairMeta {{
+            color: {t['fg_secondary']};
+            font-size: 11px;
+            font-weight: 500;
+        }}
+        QLabel#KeyPairStatus {{
+            border-radius: 7px;
+            padding: 4px 9px;
+            font-size: 11px;
+            font-weight: 800;
+        }}
+        QLabel#KeyPairStatus[state="ready"] {{
+            color: {t['success']};
+            background: {t['success_light']};
+            border: 1px solid rgba(52, 199, 89, 0.22);
+        }}
+        QLabel#KeyPairStatus[state="warning"] {{
+            color: {t['warning']};
+            background: rgba(255, 159, 10, 0.12);
+            border: 1px solid rgba(255, 159, 10, 0.24);
         }}
 
         QTextEdit#LogTextEdit {{
@@ -2294,11 +2339,12 @@ class MainWindow(QMainWindow):
                     key_pairs[key_name]['public'] = f
 
             for key_name, files in sorted(key_pairs.items()):
-                self.key_list.addItem(f"密钥对: {key_name}")
-                if files['public']:
-                    self.key_list.addItem(f"  公钥: {files['public']}")
-                if files['private']:
-                    self.key_list.addItem(f"  私钥: {files['private']}")
+                item = QListWidgetItem()
+                item.setData(Qt.UserRole, key_name)
+                item.setSizeHint(QSize(0, 68))
+                row = KeyPairListRow(key_name, files['public'], files['private'])
+                self.key_list.addItem(item)
+                self.key_list.setItemWidget(item, row)
 
             sys_logger.log(f"[新系统] 刷新密钥列表，共 {len(key_pairs)} 个密钥对")
         else:
@@ -2498,12 +2544,14 @@ class MainWindow(QMainWindow):
         if not selected:
             return QMessageBox.warning(self, "提示", "请先选择要删除的密钥对")
 
-        key_name = selected.text().strip()
-        if key_name.startswith("密钥对:"):
-            key_name = key_name.split(":", 1)[1].strip()
-        elif key_name.startswith(("公钥:", "私钥:")):
-            key_name = key_name.split(":", 1)[1].strip()
-            key_name = key_name.replace("_public.pem", "").replace("_private.pem", "")
+        key_name = selected.data(Qt.UserRole)
+        if not key_name:
+            key_name = selected.text().strip()
+            if key_name.startswith("密钥对:"):
+                key_name = key_name.split(":", 1)[1].strip()
+            elif key_name.startswith(("公钥:", "私钥:")):
+                key_name = key_name.split(":", 1)[1].strip()
+                key_name = key_name.replace("_public.pem", "").replace("_private.pem", "")
         reply = QMessageBox.question(self, "确认删除", f"确定要删除密钥对 {key_name} 吗？\n\n将同时删除私钥和公钥文件！")
         if reply == QMessageBox.Yes:
             try:

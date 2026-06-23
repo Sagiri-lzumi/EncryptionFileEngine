@@ -42,13 +42,14 @@ Encryption Studio - UI 组件模块
 from PySide6.QtWidgets import (QPushButton, QListWidget, QAbstractItemView, QCheckBox,
                                  QStyle, QStyleOptionButton, QWidget, QGraphicsBlurEffect,
                                  QScrollArea, QFrame, QVBoxLayout, QComboBox, QGraphicsDropShadowEffect,
-                                 QGroupBox, QLabel, QLineEdit, QHBoxLayout)
-from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QRectF, Property, QRect, QPoint, QParallelAnimationGroup, Signal, QPointF
-from PySide6.QtGui import QPainter, QColor, QPainterPath, QPen, QFont, QBrush, QLinearGradient, QFontMetrics, QGradient
+                                 QGroupBox, QLabel, QLineEdit, QHBoxLayout, QStackedWidget)
+from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QRectF, Property, QRect, QPoint, QParallelAnimationGroup, Signal, QPointF, QSize
+from PySide6.QtGui import QPainter, QColor, QPainterPath, QPen, QFont, QBrush, QLinearGradient, QFontMetrics, QGradient, QIcon
 import os
 import re
 
 from ui.platform_fonts import get_system_font_family
+from ui.icons import draw_icon, make_icon
 
 
 def qcolor(value, fallback="#000000", alpha=None):
@@ -66,6 +67,235 @@ def qcolor(value, fallback="#000000", alpha=None):
     if alpha is not None:
         color.setAlpha(alpha)
     return color
+
+
+class CleanStackedWidget(QStackedWidget):
+    """Stacked widget that clears translucent backing pixels before each paint."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("ContentStack")
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAutoFillBackground(False)
+
+    def paintEvent(self, event):
+        from ui.themes import THEMES
+        theme = self.window().theme_data if hasattr(self.window(), 'theme_data') else THEMES["Light"]
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setCompositionMode(QPainter.CompositionMode_Source)
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 0))
+        painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
+
+        rect = QRectF(self.rect())
+        radius = 16.0
+        bg = qcolor(theme.get('bg_vibrancy', theme.get('panel', 'rgba(255,255,255,0.42)')))
+        border = qcolor(theme.get('glass_border_subtle', 'rgba(255,255,255,0.24)'))
+
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(bg)
+        painter.drawRoundedRect(rect, radius, radius)
+        painter.setPen(QPen(border, 1.0))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), radius, radius)
+
+        super().paintEvent(event)
+
+
+class PageSurface(QFrame):
+    """Stable page root used inside CleanStackedWidget."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("PageSurface")
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAutoFillBackground(False)
+
+
+class IconBadge(QWidget):
+    """Themed icon presenter for inline symbols and soft badges."""
+    def __init__(self, icon_name="key", size=32, parent=None, accent=False, variant="badge"):
+        super().__init__(parent)
+        self.icon_name = icon_name
+        self.variant = "accent_badge" if accent else variant
+        self.setFixedSize(size, size)
+
+    def set_icon(self, icon_name):
+        self.icon_name = icon_name
+        self.update()
+
+    def set_variant(self, variant):
+        self.variant = variant
+        self.update()
+
+    def paintEvent(self, event):
+        from ui.themes import THEMES
+        theme = self.window().theme_data if hasattr(self.window(), 'theme_data') else THEMES["Light"]
+
+        if self.variant == "inline":
+            icon_color = qcolor(theme.get('fg_secondary', '#475569'))
+            bg = None
+            border = None
+            icon_rect = QRectF(self.rect()).adjusted(3, 3, -3, -3)
+        elif self.variant == "accent_badge":
+            icon_color = qcolor(theme.get('accent', '#007AFF'))
+            bg = qcolor(theme.get('accent_light', 'rgba(0, 122, 255, 0.12)'))
+            border = qcolor(theme.get('sidebar_active_border', 'rgba(0, 122, 255, 0.28)'))
+            icon_rect = QRectF(self.rect()).adjusted(7, 7, -7, -7)
+        else:
+            icon_color = qcolor(theme.get('fg_secondary', '#475569'))
+            bg = qcolor(theme.get('surface', 'rgba(248, 250, 252, 0.78)'))
+            border = qcolor(theme.get('border', 'rgba(15, 23, 42, 0.08)'))
+            bg.setAlpha(max(18, int(bg.alpha() * 0.72)))
+            icon_rect = QRectF(self.rect()).adjusted(5, 5, -5, -5)
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        if bg is not None and border is not None:
+            rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+            painter.setPen(QPen(border, 1.0))
+            painter.setBrush(bg)
+            painter.drawRoundedRect(rect, 8, 8)
+        draw_icon(painter, self.icon_name, icon_rect, icon_color, 1.85)
+
+
+class SectionHeader(QWidget):
+    """Compact icon + title row for cards and panels."""
+    def __init__(self, title, icon_name="doc", parent=None):
+        super().__init__(parent)
+        self.setObjectName("SectionHeader")
+        self.setFixedHeight(34)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+
+        self.badge = IconBadge(icon_name, 30, self, variant="badge")
+        layout.addWidget(self.badge)
+
+        self.title_label = QLabel(title)
+        self.title_label.setObjectName("SectionHeaderTitle")
+        self.title_label.setFont(QFont(get_system_font_family(), 12, QFont.DemiBold))
+        layout.addWidget(self.title_label)
+        layout.addStretch()
+
+    def set_icon(self, icon_name):
+        self.badge.set_icon(icon_name)
+
+
+class TaskWorkspacePanel(QFrame):
+    """Main task workspace: header, file queue body, and bottom tool row."""
+    def __init__(self, title, subtitle, icon_name="folder", parent=None):
+        super().__init__(parent)
+        self.setObjectName("TaskWorkspacePanel")
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(18, 16, 18, 16)
+        root.setSpacing(14)
+
+        header = QWidget()
+        header.setObjectName("WorkspaceHeader")
+        h_header = QHBoxLayout(header)
+        h_header.setContentsMargins(0, 0, 0, 0)
+        h_header.setSpacing(12)
+
+        self.badge = IconBadge(icon_name, 38, self, variant="badge")
+        h_header.addWidget(self.badge)
+
+        title_box = QVBoxLayout()
+        title_box.setContentsMargins(0, 0, 0, 0)
+        title_box.setSpacing(2)
+        self.title_label = QLabel(title)
+        self.title_label.setObjectName("WorkspaceTitle")
+        self.subtitle_label = QLabel(subtitle)
+        self.subtitle_label.setObjectName("WorkspaceSubtitle")
+        title_box.addWidget(self.title_label)
+        title_box.addWidget(self.subtitle_label)
+        h_header.addLayout(title_box)
+        h_header.addStretch()
+
+        self.count_label = QLabel("0 个文件")
+        self.count_label.setObjectName("QueueCounter")
+        h_header.addWidget(self.count_label)
+        root.addWidget(header)
+
+        self._content = QWidget()
+        self._content.setObjectName("WorkspaceBody")
+        self._content_layout = QVBoxLayout(self._content)
+        self._content_layout.setContentsMargins(0, 0, 0, 0)
+        self._content_layout.setSpacing(0)
+        root.addWidget(self._content, 1)
+
+        self._footer = QWidget()
+        self._footer.setObjectName("WorkspaceToolbar")
+        self._footer_layout = QHBoxLayout(self._footer)
+        self._footer_layout.setContentsMargins(0, 0, 0, 0)
+        self._footer_layout.setSpacing(8)
+        root.addWidget(self._footer)
+
+    def content_layout(self):
+        return self._content_layout
+
+    def footer_layout(self):
+        return self._footer_layout
+
+    def set_count(self, count):
+        self.count_label.setText(f"{count} 个文件")
+
+
+class InspectorSection(QFrame):
+    """Compact right-side inspector section with a stable header."""
+    def __init__(self, title, icon_name="doc", parent=None):
+        super().__init__(parent)
+        self.setObjectName("InspectorSection")
+        root = QVBoxLayout(self)
+        root.setContentsMargins(14, 12, 14, 14)
+        root.setSpacing(10)
+        root.addWidget(SectionHeader(title, icon_name))
+
+        self._content = QWidget()
+        self._content.setObjectName("InspectorSectionContent")
+        self._content_layout = QVBoxLayout(self._content)
+        self._content_layout.setContentsMargins(0, 0, 0, 0)
+        self._content_layout.setSpacing(8)
+        root.addWidget(self._content)
+
+    def content_layout(self):
+        return self._content_layout
+
+
+class ExecutionFooter(QFrame):
+    """Bottom execution area combining status, progress, and action stack."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("ExecutionFooter")
+        self.setFixedHeight(118)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(16, 10, 16, 14)
+        root.setSpacing(9)
+
+        status_row = QHBoxLayout()
+        status_row.setContentsMargins(0, 0, 0, 0)
+        status_row.setSpacing(8)
+
+        title = QLabel("执行状态")
+        title.setObjectName("ExecutionTitle")
+        status_row.addWidget(title)
+        status_row.addStretch()
+
+        self.status_label = QLabel("就绪")
+        self.status_label.setObjectName("StatusLabel")
+        status_row.addWidget(self.status_label)
+        root.addLayout(status_row)
+
+        self.progress_bar = GlassProgressBar()
+        self.progress_bar.setValue(0)
+        root.addWidget(self.progress_bar)
+
+        self.actions_stack = QStackedWidget()
+        self.actions_stack.setObjectName("ExecutionActions")
+        self.actions_stack.setFixedHeight(50)
+        root.addWidget(self.actions_stack)
 
 
 class DropDownComboBox(QComboBox):
@@ -590,7 +820,7 @@ class AnimatedSidebarButton(QPushButton):
     Apple 风格侧边栏导航按钮 - 毛玻璃胶囊选中态
 
     用于侧边栏导航，提供以下特性：
-        - 可选中（checkable）且互斥（autoExclusive）
+        - 由主窗口显式控制选中态，避免 Qt autoExclusive 触发重复动画
         - 悬停动画：鼠标悬停时背景渐变
         - 选中动画：选中时显示蓝色半透明胶囊背景
         - 顶部高光：模拟玻璃厚度的顶部高光线条
@@ -613,16 +843,16 @@ class AnimatedSidebarButton(QPushButton):
             parent: 父组件
         """
         super().__init__(text, parent)
-        self.setCheckable(True)
-        self.setAutoExclusive(True)
+        self.setCheckable(False)
         self.setCursor(Qt.PointingHandCursor)
-        self.setFixedHeight(48)
+        self.setFixedHeight(44)
         self.icon_emoji = icon_emoji
         self.setFont(QFont(get_system_font_family(), 11, QFont.DemiBold))
 
         # 动画属性
         self._hover_progress = 0.0
         self._check_progress = 0.0
+        self._selected = False
 
         # 悬停动画
         self._hover_anim = QPropertyAnimation(self, b"hoverProgress", self)
@@ -633,6 +863,24 @@ class AnimatedSidebarButton(QPushButton):
         self._check_anim = QPropertyAnimation(self, b"checkProgress", self)
         self._check_anim.setDuration(250)
         self._check_anim.setEasingCurve(QEasingCurve.OutCubic)
+
+    def set_selected(self, selected: bool, animate: bool = True):
+        """Set navigation selection explicitly without Qt auto-exclusive jitter."""
+        if self._selected == selected and abs(self._check_progress - (1.0 if selected else 0.0)) < 0.001:
+            return
+        self._selected = selected
+        target = 1.0 if selected else 0.0
+        self._check_anim.stop()
+        if animate:
+            self._check_anim.setStartValue(self._check_progress)
+            self._check_anim.setEndValue(target)
+            self._check_anim.start()
+        else:
+            self._check_progress = target
+            self.update()
+
+    def is_selected(self):
+        return self._selected
 
     def get_hover_progress(self):
         """获取悬停进度（动画属性）"""
@@ -667,12 +915,6 @@ class AnimatedSidebarButton(QPushButton):
         self._hover_anim.start()
         super().leaveEvent(event)
 
-    def checkStateSet(self):
-        super().checkStateSet()
-        self._check_anim.stop()
-        self._check_anim.setEndValue(1.0 if self.isChecked() else 0.0)
-        self._check_anim.start()
-
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
@@ -682,12 +924,12 @@ class AnimatedSidebarButton(QPushButton):
         theme = self.window().theme_data if hasattr(self.window(), 'theme_data') else THEMES["Light"]
 
         # === 胶囊背景区域 ===
-        capsule_rect = rect.adjusted(8, 4, -8, -4)
-        radius = 10
+        capsule_rect = rect.adjusted(6, 4, -6, -4)
+        radius = 8
 
         if self._hover_progress > 0.01 and self._check_progress < 0.01:
-            hover_bg = qcolor(theme.get('highlight', 'rgba(255, 255, 255, 0.45)'))
-            hover_bg.setAlpha(int(80 * self._hover_progress))
+            hover_bg = qcolor(theme.get('sidebar_hover', 'rgba(255, 255, 255, 0.45)'))
+            hover_bg.setAlpha(max(18, int(120 * self._hover_progress)))
             painter.setBrush(hover_bg)
             painter.setPen(Qt.NoPen)
             painter.drawRoundedRect(capsule_rect, radius, radius)
@@ -695,43 +937,36 @@ class AnimatedSidebarButton(QPushButton):
         if self._check_progress > 0.01:
             accent_hex = theme.get('accent', '#6366F1')
             accent_color = qcolor(accent_hex)
-            active_bg = QColor(accent_color.red(), accent_color.green(), accent_color.blue(), int(34 * self._check_progress))
+            active_bg = qcolor(theme.get('sidebar_active', 'rgba(0, 122, 255, 0.14)'))
+            active_bg.setAlpha(int(active_bg.alpha() * self._check_progress))
             painter.setBrush(active_bg)
-            painter.setPen(QPen(QColor(accent_color.red(), accent_color.green(), accent_color.blue(), int(72 * self._check_progress)), 1.0))
+            painter.setPen(QPen(QColor(accent_color.red(), accent_color.green(), accent_color.blue(), int(78 * self._check_progress)), 1.0))
             painter.drawRoundedRect(capsule_rect, radius, radius)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(accent_color.red(), accent_color.green(), accent_color.blue(), int(150 * self._check_progress)))
+            painter.drawRoundedRect(QRectF(capsule_rect.left() + 1.5, capsule_rect.top() + 8, 2, capsule_rect.height() - 16), 1, 1)
 
         accent_color = qcolor(theme.get('accent', '#007AFF'))
-        badge_color = QColor(
-            accent_color.red(), accent_color.green(), accent_color.blue(),
-            44 if self._check_progress > 0.5 else 18
-        )
-        badge_rect = QRectF(18, 14, 20, 20)
-        painter.setBrush(badge_color)
-        painter.setPen(Qt.NoPen)
-        painter.drawRoundedRect(badge_rect, 6, 6)
+        icon_color = accent_color if self._check_progress > 0.35 else qcolor(theme.get('fg_tertiary', '#94A3B8'))
+        icon_rect = QRectF(21, 12, 20, 20)
+        draw_icon(painter, self.icon_emoji, icon_rect, icon_color, 1.95)
 
-        glyph_map = {
-            "lock": "EN",
-            "unlock": "DE",
-            "key": "KY",
-            "doc": "LG",
-        }
-        painter.setPen(accent_color if self._check_progress > 0.5 else qcolor(theme.get('fg_secondary', '#4B5563')))
-        font_icon = QFont(get_system_font_family(), 7, QFont.Bold)
-        painter.setFont(font_icon)
-        painter.drawText(badge_rect, Qt.AlignCenter, glyph_map.get(self.icon_emoji, "ES"))
-
-        if self._check_progress > 0.5:
+        if self._check_progress > 0.35:
             accent_hex = theme.get('accent', '#6366F1')
             text_color = qcolor(accent_hex)
         else:
             text_color = qcolor(theme.get('fg', '#1D1D1F'))
         painter.setPen(text_color)
         font_text = self.font()
-        font_text.setPointSize(12)
+        font_text.setPointSize(11)
         font_text.setWeight(QFont.DemiBold)
         painter.setFont(font_text)
-        painter.drawText(QRectF(50, 0, rect.width() - 58, 48), Qt.AlignVCenter | Qt.AlignLeft, self.text())
+        painter.drawText(QRectF(54, 0, rect.width() - 62, self.height()), Qt.AlignVCenter | Qt.AlignLeft, self.text())
+
+
+class SidebarNavButton(AnimatedSidebarButton):
+    """Compatibility alias with the explicit stable navigation API."""
+    pass
 
 
 class ModernButton(QPushButton):
@@ -754,25 +989,44 @@ class ModernButton(QPushButton):
         - 最小高度: 40-48px（根据类型）
     """
 
-    def __init__(self, text="", color_type="normal", parent=None):
+    def __init__(self, text="", color_type="normal", icon_name=None, parent=None):
         """
         初始化按钮
 
         参数:
             text: 按钮显示文本
             color_type: 按钮类型 ("primary", "danger", "normal")
+            icon_name: 可选的内置矢量图标名称
             parent: 父组件
         """
+        if parent is None and isinstance(icon_name, QWidget):
+            parent = icon_name
+            icon_name = None
         super().__init__(text, parent)
         self.setCursor(Qt.PointingHandCursor)
         self.color_type = color_type
+        self.icon_name = icon_name
+        self._last_icon_color = None
         self.setFont(QFont(get_system_font_family(), 11, QFont.DemiBold))
+        self.setIconSize(QSize(18, 18))
+        if icon_name:
+            self.setMinimumWidth(92)
 
         # 点击动画属性
         self._press_scale = 1.0
         self._press_anim = QPropertyAnimation(self, b"pressScale", self)
         self._press_anim.setDuration(100)
         self._press_anim.setEasingCurve(QEasingCurve.OutQuad)
+
+    def set_icon_name(self, icon_name):
+        self.icon_name = icon_name
+        self._last_icon_color = None
+        if icon_name:
+            theme = self.window().theme_data if hasattr(self.window(), 'theme_data') else None
+            if theme:
+                self.update_theme(theme)
+        else:
+            self.setIcon(QIcon())
 
     def get_press_scale(self):
         """获取按下缩放比例（动画属性）"""
@@ -800,6 +1054,17 @@ class ModernButton(QPushButton):
         super().mouseReleaseEvent(event)
 
     def update_theme(self, theme):
+        if self.icon_name:
+            if self.color_type == "primary":
+                icon_color = "#ffffff"
+            elif self.color_type == "danger":
+                icon_color = theme.get('danger', '#FF3B30')
+            else:
+                icon_color = theme.get('fg_secondary', '#4B5563')
+            if icon_color != self._last_icon_color:
+                self.setIcon(make_icon(self.icon_name, icon_color, 18, 1.95))
+                self._last_icon_color = icon_color
+
         if self.color_type == "primary":
             style = f"""
                 QPushButton {{
@@ -896,6 +1161,8 @@ class DragDropListWidget(QListWidget):
         - 悬停边框: rgba(0,122,255,0.35)
         - 圆角: 12px
     """
+    queue_changed = Signal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAcceptDrops(True)
@@ -952,6 +1219,7 @@ class DragDropListWidget(QListWidget):
                         added = True
 
             if added and self.window():
+                self.queue_changed.emit()
                 if hasattr(self.window(), 'check_constraints'):
                     self.window().check_constraints()
 

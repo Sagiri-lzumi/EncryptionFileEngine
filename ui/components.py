@@ -84,7 +84,9 @@ class CleanStackedWidget(QStackedWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setCompositionMode(QPainter.CompositionMode_Source)
-        painter.fillRect(self.rect(), QColor(0, 0, 0, 0))
+        native_glass = bool(getattr(getattr(self.window(), "native_glass", None), "is_active", False))
+        clear_color = QColor(0, 0, 0, 0) if native_glass else qcolor(theme.get('bg_vibrancy', theme.get('panel')))
+        painter.fillRect(self.rect(), clear_color)
         painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
 
         rect = QRectF(self.rect())
@@ -763,6 +765,7 @@ class CustomCheckBox(QCheckBox):
 
         from ui.themes import THEMES
         theme = self.window().theme_data if hasattr(self.window(), 'theme_data') else THEMES["Light"]
+        enabled = self.isEnabled()
 
         # 复选框尺寸和位置
         box_size = 20
@@ -770,19 +773,27 @@ class CustomCheckBox(QCheckBox):
         box_y = (self.height() - box_size) // 2
         box_rect = QRect(box_x, box_y, box_size, box_size)
 
-        # 绘制背景 - 毛玻璃效果
+        # 绘制背景 - 毛玻璃效果；禁用态必须明确，避免用户误以为选项可点击。
         if self._check_progress > 0:
-            # 选中状态 - 渐变蓝色
-            gradient = QLinearGradient(box_rect.topLeft(), box_rect.bottomLeft())
             accent = qcolor(theme['accent'])
-            gradient.setColorAt(0, accent.lighter(110))
-            gradient.setColorAt(1, accent)
-            painter.setBrush(gradient)
-            painter.setPen(Qt.NoPen)
+            if enabled:
+                gradient = QLinearGradient(box_rect.topLeft(), box_rect.bottomLeft())
+                gradient.setColorAt(0, accent.lighter(110))
+                gradient.setColorAt(1, accent)
+                painter.setBrush(gradient)
+                painter.setPen(Qt.NoPen)
+            else:
+                accent.setAlpha(70)
+                painter.setBrush(accent)
+                painter.setPen(QPen(qcolor(theme.get('input_border', '#CBD5E1'), alpha=90), 1.2))
         else:
-            # 未选中状态 - 半透明玻璃
-            bg_color = QColor(255, 255, 255, 180)
-            border_color = QColor(0, 0, 0, 40)
+            bg_color = qcolor(theme.get('input_bg', 'rgba(255, 255, 255, 0.86)'))
+            border_color = qcolor(theme.get('input_border', 'rgba(15, 23, 42, 0.10)'))
+            if not enabled:
+                bg_color = qcolor(theme.get('surface', 'rgba(248, 250, 252, 0.78)'))
+                bg_color.setAlpha(max(24, int(bg_color.alpha() * 0.55)))
+                border_color = qcolor(theme.get('border', 'rgba(15, 23, 42, 0.08)'))
+                border_color.setAlpha(max(24, int(border_color.alpha() * 0.55)))
             painter.setBrush(bg_color)
             painter.setPen(QPen(border_color, 1.2))
 
@@ -790,7 +801,8 @@ class CustomCheckBox(QCheckBox):
 
         # 绘制对钩（带动画）
         if self._check_progress > 0.01:
-            painter.setPen(QPen(QColor("white"), 2.5, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+            check_color = QColor("white") if enabled else qcolor(theme.get('fg_tertiary', '#94A3B8'))
+            painter.setPen(QPen(check_color, 2.5, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
             progress = self._check_progress
 
             base_x = box_rect.left() + 5
@@ -806,13 +818,14 @@ class CustomCheckBox(QCheckBox):
 
         # 绘制文本
         if self.text():
-            painter.setPen(qcolor(theme['fg']))
+            painter.setPen(qcolor(theme['fg'] if enabled else theme.get('fg_tertiary', '#94A3B8')))
             font = self.font()
             font.setPointSize(12)
             font.setWeight(QFont.Medium)
             painter.setFont(font)
             text_rect = QRect(box_x + box_size + 12, 0, self.width() - box_x - box_size - 12, self.height())
-            painter.drawText(text_rect, Qt.AlignVCenter | Qt.AlignLeft, self.text())
+            text = QFontMetrics(font).elidedText(self.text(), Qt.ElideRight, max(0, text_rect.width()))
+            painter.drawText(text_rect, Qt.AlignVCenter | Qt.AlignLeft, text)
 
 
 class AnimatedSidebarButton(QPushButton):

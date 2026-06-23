@@ -35,7 +35,7 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QMessageBox, QListWidget, QAbstractItemView,
                                QFrame, QStackedWidget, QApplication, QCheckBox,
                                QSplitter, QGraphicsDropShadowEffect, QSizePolicy,
-                               QSystemTrayIcon, QMenu, QComboBox)
+                               QSystemTrayIcon, QMenu, QComboBox, QSpacerItem)
 from PySide6.QtCore import (QThread, Signal, Qt, QUrl, QPropertyAnimation,
                             QEasingCurve, QRectF, QSize, Property, QPoint, QParallelAnimationGroup)
 from PySide6.QtGui import (QDesktopServices, QPainter, QColor, QPen, QFont,
@@ -518,6 +518,153 @@ class BatchWorkerThread(QThread):
             return current_moved_total
 
 
+class RSABatchWorkerThread(QThread):
+    """
+    新 RSA 混合加密系统的批量任务线程。
+
+    旧实现直接在 UI 线程循环处理文件，只靠 QApplication.processEvents()
+    维持表面响应。这里保持原有输出规则不变，将耗时 I/O 与加解密搬到后台线程，
+    并复用现有进度、日志、暂停和终止交互。
+    """
+    sig_progress = Signal(str, int)
+    sig_log = Signal(str)
+    sig_finished = Signal(dict)
+
+    def __init__(self, files, is_encrypt, key_path, key_password=None,
+                 custom_out_dir=None, encrypt_filename=False):
+        super().__init__()
+        self.files = files
+        self.is_enc = is_encrypt
+        self.key_path = key_path
+        self.key_password = key_password
+        self.custom_out = custom_out_dir
+        self.encrypt_filename = encrypt_filename
+        self._stop_event = threading.Event()
+        self._pause_event = threading.Event()
+        self._pause_event.set()
+
+    def pause(self):
+        self._pause_event.clear()
+
+    def resume(self):
+        self._pause_event.set()
+
+    def stop(self):
+        self._stop_event.set()
+        self._pause_event.set()
+
+    def _wait_if_paused(self):
+        while not self._stop_event.is_set() and not self._pause_event.is_set():
+            QThread.msleep(80)
+
+    def run(self):
+        from core.rsa_cipher import RSAFileCipher
+        import uuid
+
+        results = {"success": [], "fail": []}
+        valid_files = []
+        total_bytes = 0
+
+        self.sig_log.emit("--- 正在扫描 RSA 任务队列 ---")
+        for file_path in self.files:
+            file_path_long = ensure_long_path(file_path)
+            if not os.path.exists(file_path_long):
+                results["fail"].append((file_path, "文件不存在"))
+                continue
+            if not os.path.isfile(file_path_long):
+                results["fail"].append((file_path, "不是有效文件"))
+                continue
+            try:
+                total_bytes += max(os.path.getsize(file_path_long), 1)
+                valid_files.append(file_path)
+            except OSError as exc:
+                results["fail"].append((file_path, f"无法读取文件大小: {exc}"))
+
+        if not valid_files:
+            self.sig_finished.emit(results)
+            return
+
+        processed_before_file = 0
+        total_count = len(valid_files)
+
+        for index, file_path in enumerate(valid_files, start=1):
+            if self._stop_event.is_set():
+                break
+
+            self._wait_if_paused()
+            if self._stop_event.is_set():
+                break
+
+            file_path_long = ensure_long_path(file_path)
+            try:
+                file_size = max(os.path.getsize(file_path_long), 1)
+            except OSError as exc:
+                results["fail"].append((file_path, f"无法读取文件大小: {exc}"))
+                continue
+            fname = os.path.basename(file_path)
+            out_dir = self.custom_out if self.custom_out else os.path.dirname(file_path)
+            try:
+                os.makedirs(ensure_long_path(out_dir), exist_ok=True)
+            except OSError as exc:
+                results["fail"].append((file_path, f"输出目录不可用: {exc}"))
+                processed_before_file += file_size
+                continue
+
+            if self.is_enc:
+                out_name = f"{uuid.uuid4().hex[:12]}.enc" if self.encrypt_filename else f"{fname}.enc"
+                out_path = os.path.join(out_dir, out_name)
+            else:
+                out_path = os.path.join(out_dir, fname.replace(".enc", ""))
+
+            def progress_callback(current, total, done_before=processed_before_file, source_size=file_size):
+                if self._stop_event.is_set():
+                    raise InterruptedError("用户终止任务")
+                self._wait_if_paused()
+                visible_total = max(total or source_size, 1)
+                current_bytes = min(max(current, 0), visible_total)
+                pct = int(((done_before + current_bytes) / max(total_bytes, 1)) * 100)
+                self.sig_progress.emit(f"处理中... {index}/{total_count}", min(pct, 99))
+
+            try:
+                if self.is_enc:
+                    success, msg = RSAFileCipher.encrypt_file(
+                        file_path_long, ensure_long_path(out_path), self.key_path, callback=progress_callback
+                    )
+                else:
+                    result = RSAFileCipher.decrypt_file(
+                        file_path_long, ensure_long_path(out_path), self.key_path,
+                        self.key_password, callback=progress_callback
+                    )
+                    if len(result) == 3:
+                        success, msg, actual_out_path = result
+                        if success:
+                            out_path = actual_out_path
+                    else:
+                        success, msg = result[0], result[1]
+
+                if self._stop_event.is_set():
+                    break
+                if success:
+                    results["success"].append((file_path, out_path))
+                    self.sig_log.emit(f"✅ {fname}")
+                else:
+                    results["fail"].append((file_path, msg))
+                    self.sig_log.emit(f"❌ {fname}: {msg}")
+            except Exception as exc:
+                if self._stop_event.is_set():
+                    break
+                results["fail"].append((file_path, str(exc)))
+                self.sig_log.emit(f"❌ {fname}: {exc}")
+            finally:
+                processed_before_file += file_size
+                pct = int((processed_before_file / max(total_bytes, 1)) * 100)
+                self.sig_progress.emit(f"处理中... {min(index, total_count)}/{total_count}", min(pct, 99))
+
+        msg = "已终止" if self._stop_event.is_set() else "任务完成"
+        self.sig_progress.emit(msg, 100)
+        self.sig_finished.emit(results)
+
+
 # ================= 主窗口 =================
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -885,7 +1032,8 @@ class MainWindow(QMainWindow):
         h_path = QHBoxLayout()
         h_path.setSpacing(8)
         txt_path = QLineEdit()
-        txt_path.setPlaceholderText("默认：覆盖源文件")
+        txt_path.setPlaceholderText("源文件目录")
+        txt_path.setToolTip("未选择输出目录时，结果会生成在源文件所在目录")
         txt_path.setReadOnly(True)
         txt_path.setFixedHeight(36)  # 减小高度
         h_path.addWidget(txt_path, 1)
@@ -896,11 +1044,20 @@ class MainWindow(QMainWindow):
         btn_path.clicked.connect(lambda: self.action_select_dir(is_encrypt))
         self.all_buttons.append(btn_path)
         h_path.addWidget(btn_path)
+
+        btn_path_reset = ModernButton("默认", "normal", "back")
+        btn_path_reset.setMinimumWidth(72)
+        btn_path_reset.setFixedHeight(36)
+        btn_path_reset.setToolTip("恢复为源文件所在目录")
+        btn_path_reset.clicked.connect(lambda: self.action_clear_dir(is_encrypt))
+        self.all_buttons.append(btn_path_reset)
+        h_path.addWidget(btn_path_reset)
         v_io.addLayout(h_path)
 
         # 保留目录结构
         chk_struct = CustomCheckBox("保留目录结构")
         chk_struct.setEnabled(False)
+        chk_struct.setToolTip("选择自定义输出目录后可用")
         v_io.addWidget(chk_struct)
 
         # 加密/解密文件名
@@ -908,6 +1065,7 @@ class MainWindow(QMainWindow):
         if is_encrypt:
             chk_dir_name_enc = CustomCheckBox("加密文件夹名")
             chk_dir_name_enc.setEnabled(False)
+            chk_dir_name_enc.setToolTip("启用保留目录结构后可用")
             v_io.addWidget(chk_dir_name_enc)
 
             def on_struct_toggled(state):
@@ -920,6 +1078,7 @@ class MainWindow(QMainWindow):
         else:
             chk_dir_name_enc = CustomCheckBox("解密文件夹名")
             chk_dir_name_enc.setEnabled(False)
+            chk_dir_name_enc.setToolTip("启用保留目录结构后可用")
             v_io.addWidget(chk_dir_name_enc)
 
             def on_struct_toggled_dec(state):
@@ -939,6 +1098,7 @@ class MainWindow(QMainWindow):
         h_ssd.setSpacing(8)
         txt_ssd = QLineEdit()
         txt_ssd.setPlaceholderText("选择 SSD 缓存路径...")
+        txt_ssd.setToolTip("旧系统可使用 SSD 路径作为临时缓存")
         txt_ssd.setReadOnly(True)
         txt_ssd.setFixedHeight(36)  # 减小高度
         h_ssd.addWidget(txt_ssd, 1)
@@ -949,10 +1109,19 @@ class MainWindow(QMainWindow):
         btn_ssd.clicked.connect(lambda: self.action_select_ssd(is_encrypt))
         self.all_buttons.append(btn_ssd)
         h_ssd.addWidget(btn_ssd)
+
+        btn_ssd_reset = ModernButton("清除", "normal", "clear")
+        btn_ssd_reset.setMinimumWidth(72)
+        btn_ssd_reset.setFixedHeight(36)
+        btn_ssd_reset.setToolTip("清除 SSD 缓存路径")
+        btn_ssd_reset.clicked.connect(self.action_clear_ssd)
+        self.all_buttons.append(btn_ssd_reset)
+        h_ssd.addWidget(btn_ssd_reset)
         v_adv.addLayout(h_ssd)
 
         chk_ssd = CustomCheckBox("启用 SSD 加速")
         chk_ssd.setEnabled(False)
+        chk_ssd.setToolTip("选择 SSD 缓存路径后可用")
         v_adv.addWidget(chk_ssd)
 
         chk_name = None
@@ -1045,13 +1214,19 @@ class MainWindow(QMainWindow):
             "chk_ssd": chk_ssd, "txt_ssd": txt_ssd,
             "status": lbl_status, "pbar": pbar, "stack": stack,
             "btn_pause": btn_pause,
+            "btn_add": btn_add, "btn_add_folder": btn_add_folder,
+            "btn_del": btn_del, "btn_clr": btn_clr,
+            "btn_path": btn_path, "btn_path_reset": btn_path_reset,
+            "btn_ssd": btn_ssd, "btn_ssd_reset": btn_ssd_reset,
+            "btn_run": btn_run,
             "queue_panel": left_container,
             "execution_footer": execution_footer,
             "old_sec_widget": self.old_sec_widget,
             "new_sec_widget": self.new_sec_widget,
             "combo_key": combo_key,
             "txt_key_pwd": txt_key_pwd if not is_encrypt else None,
-            "scroll_area": scroll_area
+            "scroll_area": scroll_area,
+            "delete_confirmed": False
         }
         return page, refs
 
@@ -1073,6 +1248,7 @@ class MainWindow(QMainWindow):
         container = QFrame()
         container.setObjectName("ContentPanel")
         v = QVBoxLayout(container)
+        self.key_page_layout = v
         v.setContentsMargins(24, 24, 24, 24)
         v.setSpacing(20)
 
@@ -1107,7 +1283,8 @@ class MainWindow(QMainWindow):
         v.addWidget(switch_card)
 
         # 密钥列表标题
-        v.addWidget(SectionHeader("密钥列表", "doc"))
+        self.key_list_header = SectionHeader("密钥列表", "doc")
+        v.addWidget(self.key_list_header)
 
         self.key_list = QListWidget()
         self.key_list.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -1117,6 +1294,7 @@ class MainWindow(QMainWindow):
         # 老系统提示
         self.old_system_widget = QFrame()
         self.old_system_widget.setObjectName("KeyInfoPanel")
+        self.old_system_widget.setMaximumHeight(88)
         v_old = QVBoxLayout(self.old_system_widget)
         v_old.setContentsMargins(16, 14, 16, 14)
         lbl_old_tip = QLabel("老系统使用对称加密，加密时直接输入密码即可，无需预先生成密钥")
@@ -1165,23 +1343,25 @@ class MainWindow(QMainWindow):
         self.all_buttons.append(self.btn_import_new)
         self.btn_import_new.hide()
 
-        btn_delete = ModernButton("删除", "danger", "trash")
-        btn_delete.setFixedHeight(34)  # 减小高度
-        btn_delete.clicked.connect(self.action_delete_key)
-        self.all_buttons.append(btn_delete)
+        self.btn_delete_key = ModernButton("删除", "danger", "trash")
+        self.btn_delete_key.setFixedHeight(34)  # 减小高度
+        self.btn_delete_key.clicked.connect(self.action_delete_key)
+        self.all_buttons.append(self.btn_delete_key)
 
-        btn_refresh = ModernButton("刷新", "normal", "refresh")
-        btn_refresh.setFixedHeight(34)  # 减小高度
-        btn_refresh.clicked.connect(self.action_refresh_keys)
-        self.all_buttons.append(btn_refresh)
+        self.btn_refresh_keys = ModernButton("刷新", "normal", "refresh")
+        self.btn_refresh_keys.setFixedHeight(34)  # 减小高度
+        self.btn_refresh_keys.clicked.connect(self.action_refresh_keys)
+        self.all_buttons.append(self.btn_refresh_keys)
 
         btn_bar.addWidget(self.btn_gen_new)
         btn_bar.addWidget(self.btn_import_new)
-        btn_bar.addWidget(btn_delete)
-        btn_bar.addWidget(btn_refresh)
+        btn_bar.addWidget(self.btn_delete_key)
+        btn_bar.addWidget(self.btn_refresh_keys)
         btn_bar.addStretch()
 
         v.addLayout(btn_bar)
+        self.key_page_bottom_spacer = QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        v.addItem(self.key_page_bottom_spacer)
         layout.addWidget(container)
         self.content_stack.addWidget(page)
         self.action_refresh_keys()
@@ -1261,6 +1441,12 @@ class MainWindow(QMainWindow):
         self.btn_theme.setText(f"{theme_name}")
         native_glass_enabled = self.native_glass.apply(t)
         window_bg = "transparent" if native_glass_enabled else t["bg"]
+        main_surface_bg = "transparent" if native_glass_enabled else t["bg"]
+
+        self.setAttribute(Qt.WA_TranslucentBackground, native_glass_enabled)
+        self.setAutoFillBackground(not native_glass_enabled)
+        self.main_surface.setAttribute(Qt.WA_TranslucentBackground, native_glass_enabled)
+        self.main_surface.setAutoFillBackground(not native_glass_enabled)
 
         for widget in self.findChildren(QLineEdit):
             widget.setTextMargins(10, 0, 10, 0)
@@ -1270,7 +1456,7 @@ class MainWindow(QMainWindow):
             background: {window_bg};
         }}
         QWidget#MainSurface {{
-            background: transparent;
+            background: {main_surface_bg};
         }}
         QStackedWidget#ContentStack {{
             background: transparent;
@@ -1673,22 +1859,48 @@ class MainWindow(QMainWindow):
             panel.set_count(ui["list"].count())
 
     def check_constraints(self):
+        for ui in (self.ui_enc, self.ui_dec):
+            ui["txt_ssd"].setEnabled(not self.use_new_system)
+            ui["btn_ssd"].setEnabled(not self.use_new_system)
+            ui["btn_ssd_reset"].setEnabled(bool(self.custom_ssd_path) and not self.use_new_system)
+
+        self.ui_enc["btn_path_reset"].setEnabled(bool(self.custom_enc_path))
+        self.ui_dec["btn_path_reset"].setEnabled(bool(self.custom_dec_path))
+
         # 1. 输出路径 -> 保留目录结构
         enc_path = self.custom_enc_path
-        if not enc_path:
+        if self.use_new_system:
+            self.ui_enc["chk_struct"].setChecked(False)
+            self.ui_enc["chk_struct"].setEnabled(False)
+            self.ui_enc["chk_dir_name_enc"].setChecked(False)
+            self.ui_enc["chk_dir_name_enc"].setEnabled(False)
+            self.ui_enc["chk_ssd"].setChecked(False)
+            self.ui_enc["chk_ssd"].setEnabled(False)
+        elif not enc_path:
             self.ui_enc["chk_struct"].setChecked(False)
             self.ui_enc["chk_struct"].setEnabled(False)
         else:
             self.ui_enc["chk_struct"].setEnabled(True)
+            self.ui_enc["chk_dir_name_enc"].setEnabled(self.ui_enc["chk_struct"].isChecked())
 
         dec_path = self.custom_dec_path
-        if not dec_path:
+        if self.use_new_system:
+            self.ui_dec["chk_struct"].setChecked(False)
+            self.ui_dec["chk_struct"].setEnabled(False)
+            self.ui_dec["chk_dir_name_enc"].setChecked(False)
+            self.ui_dec["chk_dir_name_enc"].setEnabled(False)
+            self.ui_dec["chk_ssd"].setChecked(False)
+            self.ui_dec["chk_ssd"].setEnabled(False)
+        elif not dec_path:
             self.ui_dec["chk_struct"].setChecked(False)
             self.ui_dec["chk_struct"].setEnabled(False)
         else:
             self.ui_dec["chk_struct"].setEnabled(True)
+            self.ui_dec["chk_dir_name_enc"].setEnabled(self.ui_dec["chk_struct"].isChecked())
 
         # 2. SSD 路径 -> 启用 SSD 加速
+        if self.use_new_system:
+            return
         if self.custom_ssd_path:
             self.ui_enc["chk_ssd"].setEnabled(True)
             self.ui_dec["chk_ssd"].setEnabled(True)
@@ -1697,6 +1909,26 @@ class MainWindow(QMainWindow):
             self.ui_enc["chk_ssd"].setEnabled(False)
             self.ui_dec["chk_ssd"].setChecked(False)
             self.ui_dec["chk_ssd"].setEnabled(False)
+
+    def _set_task_setup_enabled(self, is_encrypt, enabled):
+        ui = self.ui_enc if is_encrypt else self.ui_dec
+        control_names = (
+            "list", "pwd", "path", "txt_ssd", "combo_key", "txt_key_pwd",
+            "chk_name", "chk_del", "chk_struct", "chk_dir_name_enc", "chk_ssd",
+            "btn_add", "btn_add_folder", "btn_del", "btn_clr",
+            "btn_path", "btn_path_reset", "btn_ssd", "btn_ssd_reset", "btn_run",
+        )
+        for name in control_names:
+            widget = ui.get(name)
+            if widget is not None:
+                widget.setEnabled(enabled)
+
+        if enabled:
+            self.check_constraints()
+        else:
+            ui["chk_struct"].setEnabled(False)
+            ui["chk_dir_name_enc"].setEnabled(False)
+            ui["chk_ssd"].setEnabled(False)
 
     def action_add_file(self, is_encrypt):
         self.reset_ui_state(is_encrypt)
@@ -1765,6 +1997,19 @@ class MainWindow(QMainWindow):
                 self.append_log(f"输出目录已设置: {d}")
         self.check_constraints()
 
+    def action_clear_dir(self, is_encrypt):
+        if is_encrypt:
+            self.custom_enc_path = None
+            self.ui_enc["path"].clear()
+            self.ui_enc["chk_struct"].setChecked(False)
+            self.append_log("加密输出目录已恢复为默认")
+        else:
+            self.custom_dec_path = None
+            self.ui_dec["path"].clear()
+            self.ui_dec["chk_struct"].setChecked(False)
+            self.append_log("解密输出目录已恢复为默认")
+        self.check_constraints()
+
     def action_select_ssd(self, is_encrypt):
         d = QFileDialog.getExistingDirectory(self, "选择 SSD 缓存目录")
         if d:
@@ -1775,6 +2020,15 @@ class MainWindow(QMainWindow):
             self.append_log(f"SSD 缓存已设置: {d}")
         self.check_constraints()
 
+    def action_clear_ssd(self):
+        self.custom_ssd_path = None
+        self.ui_enc["txt_ssd"].clear()
+        self.ui_dec["txt_ssd"].clear()
+        self.ui_enc["chk_ssd"].setChecked(False)
+        self.ui_dec["chk_ssd"].setChecked(False)
+        self.append_log("SSD 缓存路径已清除")
+        self.check_constraints()
+
     def reset_ui_state(self, is_encrypt):
         ui = self.ui_enc if is_encrypt else self.ui_dec
         ui["stack"].setCurrentIndex(0)
@@ -1782,8 +2036,8 @@ class MainWindow(QMainWindow):
         ui["status"].setText("就绪")
         ui["btn_pause"].setText("挂起")
         ui["btn_pause"].set_icon_name("pause")
-        ui["list"].setEnabled(True)
-        ui["pwd"].setEnabled(True)
+        ui["delete_confirmed"] = False
+        self._set_task_setup_enabled(is_encrypt, True)
         self.update_queue_count(is_encrypt)
         self.check_constraints()
 
@@ -1819,13 +2073,43 @@ class MainWindow(QMainWindow):
             if not os.path.exists(key_path):
                 return QMessageBox.warning(self, "错误", f"密钥文件不存在: {key_path}")
 
+            if not self._confirm_destructive_cleanup(files, is_encrypt, ui):
+                return
             sys_logger.log(f"[新系统] 使用密钥: {key_name}")
             self._start_new_system_process(is_encrypt, files, path, key_path, key_pwd, ui)
         else:
             pwd = ui["pwd"].text()
             if not pwd:
                 return QMessageBox.warning(self, "安全提示", "必须输入密码。")
+            if not self._confirm_destructive_cleanup(files, is_encrypt, ui):
+                return
             self._start_old_system_process(is_encrypt, files, path, pwd, ui)
+
+    def _confirm_destructive_cleanup(self, files, is_encrypt, ui):
+        ui["delete_confirmed"] = False
+        chk_del = ui.get("chk_del")
+        if not chk_del or not chk_del.isChecked():
+            return True
+
+        target_name = "源文件" if is_encrypt else "加密包"
+        preview_limit = 8
+        preview = "\n".join(files[:preview_limit])
+        if len(files) > preview_limit:
+            preview += f"\n... 以及另外 {len(files) - preview_limit} 个文件"
+
+        reply = QMessageBox.warning(
+            self,
+            "二次确认删除",
+            f"你已开启“完成后删除{target_name}”。\n\n"
+            f"任务成功处理后，将删除队列中的对应{target_name}：\n{preview}\n\n"
+            "此操作不可撤销，是否继续？",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return False
+        ui["delete_confirmed"] = True
+        return True
 
     def _start_old_system_process(self, is_encrypt, files, path, pwd, ui):
         """老系统加密/解密"""
@@ -1848,8 +2132,7 @@ class MainWindow(QMainWindow):
         sys_logger.log(f"文件数量: {len(files)}")
         sys_logger.log(f"输出目录: {path if path else '原地覆盖'}")
 
-        ui["list"].setEnabled(False)
-        ui["pwd"].setEnabled(False)
+        self._set_task_setup_enabled(is_encrypt, False)
         ui["stack"].setCurrentIndex(1)
         ui["pbar"].setValue(0)
         ui["pbar"].start_shimmer()  # 启动流光动画
@@ -1870,60 +2153,28 @@ class MainWindow(QMainWindow):
 
     def _start_new_system_process(self, is_encrypt, files, path, key_path, key_pwd, ui):
         """新系统加密/解密"""
-        from core.rsa_cipher import RSAFileCipher
-
         task_type = "加密" if is_encrypt else "解密"
         sys_logger.log(f"========== [新系统] 开始{task_type}任务 ==========")
         sys_logger.log(f"文件数量: {len(files)}")
         sys_logger.log(f"密钥: {os.path.basename(key_path)}")
+        sys_logger.log(f"输出目录: {path if path else '原地覆盖'}")
 
-        ui["list"].setEnabled(False)
+        self._set_task_setup_enabled(is_encrypt, False)
         ui["stack"].setCurrentIndex(1)
         ui["pbar"].setValue(0)
         ui["pbar"].start_shimmer()  # 启动流光动画
         ui["status"].setText("初始化引擎...")
 
-        results = {"success": [], "fail": []}
-        total = len(files)
-
-        for idx, f in enumerate(files):
-            try:
-                fname = os.path.basename(f)
-                out_dir = path if path else os.path.dirname(f)
-                if is_encrypt:
-                    if ui.get("chk_name") and ui["chk_name"].isChecked():
-                        import uuid
-                        random_name = str(uuid.uuid4().hex)[:12] + ".enc"
-                        out_path = os.path.join(out_dir, random_name)
-                    else:
-                        out_path = os.path.join(out_dir, fname + ".enc")
-                    success, msg = RSAFileCipher.encrypt_file(f, out_path, key_path)
-                else:
-                    out_path = os.path.join(out_dir, fname.replace(".enc", ""))
-                    result = RSAFileCipher.decrypt_file(f, out_path, key_path, key_pwd)
-                    if len(result) == 3:
-                        success, msg, actual_out_path = result
-                        if success:
-                            out_path = actual_out_path
-                    else:
-                        success, msg = result[0], result[1]
-
-                if success:
-                    results["success"].append((f, out_path))
-                    sys_logger.log(f"✅ {fname}")
-                else:
-                    results["fail"].append((f, msg))
-                    sys_logger.log(f"❌ {fname}: {msg}")
-            except Exception as e:
-                results["fail"].append((f, str(e)))
-                sys_logger.log(f"❌ {fname}: {e}")
-
-            progress = int((idx + 1) / total * 100)
-            ui["pbar"].setValue(progress)
-            ui["status"].setText(f"处理中... {idx + 1}/{total}")
-            QApplication.processEvents()
-
-        self.on_finished(results, is_encrypt)
+        self.is_paused = False
+        self.worker = RSABatchWorkerThread(
+            files, is_encrypt, key_path, key_pwd,
+            custom_out_dir=path,
+            encrypt_filename=ui["chk_name"].isChecked() if is_encrypt and ui["chk_name"] else False
+        )
+        self.worker.sig_progress.connect(self.update_progress)
+        self.worker.sig_log.connect(self.append_log)
+        self.worker.sig_finished.connect(lambda r: self.on_finished(r, is_encrypt))
+        self.worker.start()
 
     def update_progress(self, text, val):
         if not self.worker: return
@@ -1965,8 +2216,7 @@ class MainWindow(QMainWindow):
         ui = self.ui_enc if is_encrypt else self.ui_dec
         ui["stack"].setCurrentIndex(2)
         ui["pbar"].stop_shimmer()  # 停止流光动画
-        ui["list"].setEnabled(True)
-        ui["pwd"].setEnabled(True)
+        self._set_task_setup_enabled(is_encrypt, True)
         ui["list"].clear()
         self.update_queue_count(is_encrypt)
 
@@ -1988,7 +2238,7 @@ class MainWindow(QMainWindow):
                 sys_logger.log("---")
 
         chk_del = ui["chk_del"]
-        if chk_del.isChecked():
+        if chk_del.isChecked() and ui.get("delete_confirmed"):
             self.append_log("执行安全删除...")
             sys_logger.log("开始删除源文件...")
             for src, _ in results["success"]:
@@ -1997,6 +2247,7 @@ class MainWindow(QMainWindow):
                     sys_logger.log(f"已删除: {src}")
                 except Exception as e:
                     sys_logger.log(f"删除失败: {src}, 错误: {e}")
+        ui["delete_confirmed"] = False
 
         succ = len(results["success"])
         fail = len(results["fail"])
@@ -2016,6 +2267,16 @@ class MainWindow(QMainWindow):
 
     def action_refresh_keys(self):
         self.key_list.clear()
+        self.key_list_header.setVisible(self.use_new_system)
+        self.key_list.setVisible(self.use_new_system)
+        self.btn_delete_key.setVisible(self.use_new_system)
+        self.btn_refresh_keys.setVisible(self.use_new_system)
+        if self.use_new_system:
+            self.key_page_bottom_spacer.changeSize(0, 0, QSizePolicy.Minimum, QSizePolicy.Fixed)
+        else:
+            self.key_page_bottom_spacer.changeSize(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        self.key_page_layout.invalidate()
+
         if self.use_new_system:
             keys_dir = DIRS["KEYS"]
             key_pairs = {}
@@ -2041,7 +2302,6 @@ class MainWindow(QMainWindow):
 
             sys_logger.log(f"[新系统] 刷新密钥列表，共 {len(key_pairs)} 个密钥对")
         else:
-            self.key_list.addItem("老系统无需管理密钥，加密时直接输入密码即可")
             sys_logger.log(f"[老系统] 无需密钥管理")
 
     def action_switch_system(self):
@@ -2081,6 +2341,7 @@ class MainWindow(QMainWindow):
             self.ui_dec["old_sec_widget"].show()
             self.ui_dec["new_sec_widget"].hide()
         self.action_refresh_keys()
+        self.check_constraints()
         sys_logger.log(f"切换到{'新' if self.use_new_system else '老'}加密系统")
         self.append_log(f"已切换到{'新' if self.use_new_system else '老'}加密系统")
 
@@ -2122,6 +2383,7 @@ class MainWindow(QMainWindow):
             self.new_key_name_input.clear()
             self.new_key_password_input.clear()
             self.action_refresh_keys()
+            self.refresh_key_combos()
 
             QMessageBox.information(self, "成功",
                 f"密钥对已生成！\n\n私钥: {private_path}\n公钥: {public_path}\n\n⚠️ 请妥善保管私钥和密码！")
@@ -2224,6 +2486,7 @@ class MainWindow(QMainWindow):
         sys_logger.log(f"导入密钥对: {pub_name}, {priv_name}")
         self.append_log(f"导入密钥对成功")
         self.action_refresh_keys()
+        self.refresh_key_combos()
         dialog.accept()
         QMessageBox.information(self, "完成", "密钥对导入成功！")
 
@@ -2256,6 +2519,7 @@ class MainWindow(QMainWindow):
                 sys_logger.log(f"删除密钥对: {key_name}")
                 self.append_log(f"删除密钥对: {key_name}")
                 self.action_refresh_keys()
+                self.refresh_key_combos()
                 QMessageBox.information(self, "完成", "密钥对已删除")
             except Exception as e:
                 QMessageBox.warning(self, "错误", f"删除失败: {e}")

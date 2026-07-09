@@ -96,6 +96,12 @@ def draw_icon(painter, name, rect, color, stroke_width=1.8):
         if name in {"rsa", "keypair"}:
             painter.drawEllipse(rr(14.3, 4.2, 5.7, 5.7))
             line(17.15, 9.9, 17.15, 11.6)
+    elif name in {"brand-shield", "shield-lock-brand"}:
+        # 盾形轮廓 + 盾内钥匙孔：纯线条、不填色，与侧栏导航按钮同款线风。
+        poly([(4, 4), (20, 4), (20, 9), (12, 21), (4, 9)], close=True)
+        # 钥匙孔：上半圆 + 下方收口竖线，居中略偏上
+        painter.drawEllipse(p(12, 10.4), 2.2 * sx, 2.2 * sy)
+        line(12, 12.4, 12, 15.6)
     elif name in {"doc", "log", "file"}:
         path = QPainterPath()
         path.moveTo(p(7, 3.8))

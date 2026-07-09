@@ -719,17 +719,27 @@ class MainWindow(QMainWindow):
         v_sidebar.setContentsMargins(14, 22, 14, 18)
         v_sidebar.setSpacing(7)
 
-        # 标题（品牌徽章 + 文字横向组合）
+        # 标题（线形盾锁徽标 + 两行品牌名，避免长名在窄侧栏中被裁字）
         title_row = QWidget()
         h_title = QHBoxLayout(title_row)
         h_title.setContentsMargins(0, 0, 0, 0)
-        h_title.setSpacing(10)
-        logo_badge = BrandLogoBadge("E", 36)
+        h_title.setSpacing(8)
+        logo_badge = BrandLogoBadge(size=30)
         h_title.addWidget(logo_badge, 0, Qt.AlignVCenter)
-        lbl_title = QLabel("Encryption Studio")
+
+        text_col = QWidget()
+        v_text = QVBoxLayout(text_col)
+        v_text.setContentsMargins(0, 0, 0, 0)
+        v_text.setSpacing(0)
+        lbl_title = QLabel("Encryption")
         lbl_title.setObjectName("AppTitle")
         lbl_title.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        h_title.addWidget(lbl_title, 1, Qt.AlignVCenter)
+        lbl_subtitle = QLabel("Studio")
+        lbl_subtitle.setObjectName("AppSubtitle")
+        lbl_subtitle.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        v_text.addWidget(lbl_title)
+        v_text.addWidget(lbl_subtitle)
+        h_title.addWidget(text_col, 1, Qt.AlignVCenter)
         v_sidebar.addWidget(title_row)
 
         lbl_nav = QLabel("WORKSPACE")
@@ -1516,8 +1526,13 @@ class MainWindow(QMainWindow):
         }}
         QLabel#AppTitle {{
             color: {t['fg']};
-            font-size: 17px;
-            font-weight: 700;
+            font-size: 16px;
+            font-weight: 800;
+        }}
+        QLabel#AppSubtitle {{
+            color: {t['fg_tertiary']};
+            font-size: 11px;
+            font-weight: 500;
         }}
         QLabel#VersionLabel {{
             color: {t['fg_tertiary']};

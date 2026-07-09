@@ -222,6 +222,9 @@ class TaskWorkspacePanel(QFrame):
 
         self._content = QWidget()
         self._content.setObjectName("WorkspaceBody")
+        # 启用样式背景，使 QSS 的 background:transparent 真正生效，
+        # 避免非 macOS 关毛玻璃时被 Qt 用系统浅色填充冒白块。
+        self._content.setAttribute(Qt.WA_StyledBackground, True)
         self._content_layout = QVBoxLayout(self._content)
         self._content_layout.setContentsMargins(0, 0, 0, 0)
         self._content_layout.setSpacing(0)
@@ -229,6 +232,7 @@ class TaskWorkspacePanel(QFrame):
 
         self._footer = QWidget()
         self._footer.setObjectName("WorkspaceToolbar")
+        self._footer.setAttribute(Qt.WA_StyledBackground, True)
         self._footer_layout = QHBoxLayout(self._footer)
         self._footer_layout.setContentsMargins(0, 0, 0, 0)
         self._footer_layout.setSpacing(8)
@@ -256,6 +260,9 @@ class InspectorSection(QFrame):
 
         self._content = QWidget()
         self._content.setObjectName("InspectorSectionContent")
+        # 启用样式背景：InspectorSection 父框架是深色 surface，子内容用 transparent
+        # 需 WA_StyledBackground 才能让 QSS background 生效，避免冒系统浅色。
+        self._content.setAttribute(Qt.WA_StyledBackground, True)
         self._content_layout = QVBoxLayout(self._content)
         self._content_layout.setContentsMargins(0, 0, 0, 0)
         self._content_layout.setSpacing(8)
@@ -472,7 +479,11 @@ class SmoothScrollArea(QScrollArea):
 
     def update_theme(self, theme_data):
         """更新滚动条样式 - 毛玻璃风格"""
-        is_dark = theme_data.get('fg', '#111827').upper() == '#F8FAFC'
+        # 用前景色亮度判定深色主题：亮色文字 => 深色背景 => is_dark。
+        # 旧实现写死 == '#F8FAFC'，但 Dark 主题的 fg 是 #F4F7FB，永远不匹配，
+        # 导致 Dark 模式滚动条手柄误用浅色模式的深色，在深底上几乎不可见。
+        fg = qcolor(theme_data.get('fg', '#111827'))
+        is_dark = fg.lightness() > 128
         handle_bg = "rgba(255, 255, 255, 0.22)" if is_dark else "rgba(15, 23, 42, 0.16)"
         handle_hover = "rgba(255, 255, 255, 0.34)" if is_dark else "rgba(15, 23, 42, 0.24)"
         handle_pressed = "rgba(255, 255, 255, 0.44)" if is_dark else "rgba(15, 23, 42, 0.32)"
@@ -548,6 +559,7 @@ class GlassSectionCard(QFrame):
         # 内容区域
         self._content = QWidget()
         self._content.setObjectName("CardContent")
+        self._content.setAttribute(Qt.WA_StyledBackground, True)
         self._content_layout = QVBoxLayout(self._content)
         self._content_layout.setContentsMargins(18, 4, 18, 18)
         self._content_layout.setSpacing(14)
@@ -1437,6 +1449,7 @@ class ConfigPanelCard(QFrame):
         # 内容区域
         self._content = QWidget()
         self._content.setObjectName("CardContent")
+        self._content.setAttribute(Qt.WA_StyledBackground, True)
         self._content_layout = QVBoxLayout(self._content)
         self._content_layout.setContentsMargins(16, 8, 16, 16)
         self._content_layout.setSpacing(12)

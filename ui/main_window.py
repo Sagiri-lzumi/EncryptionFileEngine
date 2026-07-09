@@ -949,8 +949,10 @@ class MainWindow(QMainWindow):
         # === 右侧：配置面板 (毛玻璃卡片) ===
         right_container = QFrame()
         right_container.setObjectName("ConfigPanel")
-        right_container.setMinimumWidth(380)
-        right_container.setMaximumWidth(500)
+        # 放宽配置面板宽度上下限，让「输出路径」「高级策略」等路径输入框不被挤窄。
+        # 旧值 minWidth380/maxWidth500 时路径框只剩下 ~280px 可读宽度。
+        right_container.setMinimumWidth(420)
+        right_container.setMaximumWidth(640)
 
         v_right = QVBoxLayout(right_container)
         v_right.setContentsMargins(0, 0, 0, 0)
@@ -973,6 +975,9 @@ class MainWindow(QMainWindow):
         # 滚动内容容器
         scroll_content = QWidget()
         scroll_content.setObjectName("ScrollContent")
+        # 启用样式背景，使 QSS background:transparent 生效，
+        # 避免非 macOS 关玻璃时配置滚动内容冒系统浅色块。
+        scroll_content.setAttribute(Qt.WA_StyledBackground, True)
         v_scroll = QVBoxLayout(scroll_content)
         v_scroll.setContentsMargins(16, 0, 16, 12)
         v_scroll.setSpacing(10)  # 减小间距
@@ -1199,9 +1204,12 @@ class MainWindow(QMainWindow):
 
         splitter.addWidget(right_container)
 
-        # 设置 Splitter 比例
-        splitter.setStretchFactor(0, 6)
-        splitter.setStretchFactor(1, 4)
+        # 设置 Splitter 比例：略偏右配置面板，让路径输入框开局即有足够宽度。
+        # 旧权重 6:4 在窗口不宽时会把右面板压到 minWidth，路径框很窄。
+        splitter.setStretchFactor(0, 5)
+        splitter.setStretchFactor(1, 5)
+        # 给一个初始可见宽度，保证首次进入时右面板不至于被压到 maxWidth 下限附近。
+        splitter.setSizes([620, 640])
 
         # 包装到 Layout
         layout = QVBoxLayout(page)
@@ -1475,6 +1483,23 @@ class MainWindow(QMainWindow):
             font-family: {get_system_font_qss()};
             font-size: {t['body_size']};
             font-weight: {t['body_weight']};
+        }}
+        /* 兜底：这些中间容器都嵌在已设深色背景的父容器里（ConfigPanel/InspectorSection/
+           TaskWorkspacePanel/ConfigPanelCard）。显式标 transparent 并启用样式背景，
+           避免非 macOS 平台关闭毛玻璃后 Qt 用系统默认浅色 autoFillBackground，
+           在深色面板里冒出白/灰块、形成 Dark 模式黑白不统一。 */
+        QWidget#ScrollContent,
+        QWidget#InspectorSectionContent,
+        QWidget#WorkspaceBody,
+        QWidget#CardContent,
+        QWidget#BottomArea,
+        QWidget#WorkspaceToolbar {{
+            background: transparent;
+        }}
+        /* 滚动区 viewport 兜底，防止配置滚动区视口冒系统色。 */
+        QScrollArea#ConfigScrollArea,
+        QScrollArea#ConfigScrollArea > QWidget > QWidget {{
+            background: transparent;
         }}
 
         QFrame#Sidebar {{

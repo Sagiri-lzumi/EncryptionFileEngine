@@ -226,6 +226,29 @@ def draw_icon(painter, name, rect, color, stroke_width=1.8):
         for y, knob in ((7, 15), (12, 9), (17, 13)):
             line(5, y, 19, y)
             painter.drawEllipse(p(knob, y), 1.6 * sx, 1.6 * sy)
+    elif name in {"sun", "light"}:
+        # 太阳：中心圆 + 8 条放射线
+        painter.drawEllipse(p(12, 12), 3.6 * sx, 3.6 * sy)
+        for k, (x, y) in enumerate([(12, 4), (12, 20), (4, 12), (20, 12),
+                                    (7.5, 7.5), (16.5, 7.5), (7.5, 16.5), (16.5, 16.5)]):
+            if (x, y) == (12, 4) or (x, y) == (12, 20):
+                line(x, y, x, 6.6 if y < 12 else 17.4)
+            elif (x, y) == (4, 12) or (x, y) == (20, 12):
+                line(x, y, 6.6 if x < 12 else 17.4, y)
+            else:
+                # 对角放射线，从中心圆边缘到外端
+                dx = 1 if x > 12 else -1
+                dy = 1 if y > 12 else -1
+                painter.drawLine(p(12 + 4.4 * dx, 12 + 4.4 * dy), p(x, y))
+    elif name in {"moon", "dark"}:
+        # 月牙：左半外圆弧 + 右半内弧（偏移圆），两条弧拼出月牙轮廓
+        path = QPainterPath()
+        # 外半圆：以 (12,12) 为心、半径 ~7.5，从下到上画左半弧
+        path.arcMoveTo(rr(4.5, 4.5, 15, 15), 270)
+        path.arcTo(rr(4.5, 4.5, 15, 15), 270, -180)
+        # 内弧：以偏移圆 (14,12) 为心、半径 ~7.5，从上到下画左半弧回起点，形成月牙
+        path.arcTo(rr(6.5, 4.5, 15, 15), 90, 180)
+        painter.drawPath(path)
     else:
         painter.drawRoundedRect(rr(5, 5, 14, 14), 4 * sx, 4 * sy)
         line(8.5, 12, 15.5, 12)

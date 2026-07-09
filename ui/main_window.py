@@ -39,7 +39,8 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
 from PySide6.QtCore import (QThread, Signal, Qt, QUrl, QPropertyAnimation,
                             QEasingCurve, QRectF, QSize, Property, QPoint, QParallelAnimationGroup)
 from PySide6.QtGui import (QDesktopServices, QPainter, QColor, QPen, QFont,
-                           QBrush, QIcon, QPainterPath, QCursor, QAction)
+                           QBrush, QIcon, QPainterPath, QCursor, QAction,
+                           QGuiApplication)
 
 from config import DIRS
 from core.file_cipher import FileCipherEngine
@@ -47,11 +48,11 @@ from core.logger import sys_logger
 from ui.themes import THEMES
 from ui.native_effects import NativeGlassController
 from ui.components import (AnimatedSidebarButton, ModernButton, DragDropListWidget,
-                           CustomCheckBox, ThemeSelector, SmoothScrollArea,
+                           CustomCheckBox, SmoothScrollArea,
                            DropDownComboBox, SystemSwitchButton, GlassProgressBar,
                            CleanStackedWidget, PageSurface, SectionHeader, IconBadge,
                            TaskWorkspacePanel, InspectorSection, ExecutionFooter,
-                           KeyPairListRow, BrandLogoBadge)
+                           KeyPairListRow, BrandLogoBadge, ThemeToggleButton)
 from ui.platform_fonts import get_monospace_font_qss, get_system_font_family, get_system_font_qss
 from ui.utils import ensure_long_path, format_size, get_drive_root
 
@@ -674,8 +675,9 @@ class MainWindow(QMainWindow):
         self.setFixedSize(1200, 850)
 
         self.theme_names = list(THEMES.keys())
-        self.current_theme_idx = 0
-        self.theme_data = THEMES[self.theme_names[0]]
+        # 默认跟随系统主题：系统 Dark → Dark，Light/Unknown → Light
+        self.current_theme_idx = self._system_scheme_theme_idx()
+        self.theme_data = THEMES[self.theme_names[self.current_theme_idx]]
 
         self.custom_enc_path = None
         self.custom_dec_path = None
@@ -688,16 +690,38 @@ class MainWindow(QMainWindow):
         self.use_new_system = False
         self.native_glass = NativeGlassController(self)
 
-        # 创建主题选择器
-        self.theme_selector = ThemeSelector(self)
-        self.theme_selector.setup_themes(THEMES)
-        self.theme_selector.theme_selected.connect(self.on_theme_selected)
-
         # 创建系统托盘
         self._init_tray()
 
         self._init_ui()
         self.apply_theme()
+
+        # 始终跟随系统主题：系统深浅变化时纠正回系统主题（覆盖手动临时预览）。
+        style_hints = QGuiApplication.styleHints()
+        try:
+            style_hints.colorSchemeChanged.connect(self._on_system_scheme_changed)
+        except Exception:
+            # 旧 Qt 无此信号时静默降级，保持启动时检测到的主题不崩。
+            pass
+
+    @staticmethod
+    def _system_scheme_theme_idx(names=None):
+        """根据系统 colorScheme 返回主题索引：Dark→Dark，其它(Light/Unknown)→Light。"""
+        names = names if names is not None else list(THEMES.keys())
+        try:
+            scheme = QGuiApplication.styleHints().colorScheme()
+            if scheme == Qt.ColorScheme.Dark:
+                return names.index("Dark") if "Dark" in names else 0
+        except Exception:
+            pass
+        return names.index("Light") if "Light" in names else 0
+
+    def _on_system_scheme_changed(self, _scheme=None):
+        """系统主题变化 → 始终纠正回系统主题（手动预览被覆盖）。"""
+        new_idx = self._system_scheme_theme_idx()
+        if new_idx != self.current_theme_idx:
+            self.current_theme_idx = new_idx
+            self.apply_theme()
 
     def _init_ui(self):
         # 主容器
@@ -766,12 +790,6 @@ class MainWindow(QMainWindow):
 
         v_sidebar.addStretch()
 
-        self.btn_theme = ModernButton("主题", "normal", "theme")
-        self.btn_theme.setMinimumHeight(44)
-        self.btn_theme.clicked.connect(self.show_theme_menu)
-        self.all_buttons.append(self.btn_theme)
-        v_sidebar.addWidget(self.btn_theme)
-
         # 版本信息
         lbl_version = QLabel("v1.0 nexus")
         lbl_version.setAlignment(Qt.AlignCenter)
@@ -780,9 +798,30 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(self.sidebar)
 
-        # === 2. 右侧内容区 ===
+        # === 2. 右侧内容区（顶部主题切换栏 + 内容栈）===
+        right_area = QWidget()
+        right_area.setObjectName("RightArea")
+        right_layout = QVBoxLayout(right_area)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(8)
+
+        # 顶栏：太阳/月亮主题切换器靠右
+        top_bar = QWidget()
+        top_bar.setObjectName("ContentTopBar")
+        top_bar.setFixedHeight(34)
+        top_bar.setAttribute(Qt.WA_StyledBackground, True)
+        top_bar_layout = QHBoxLayout(top_bar)
+        top_bar_layout.setContentsMargins(8, 0, 4, 0)
+        top_bar_layout.addStretch()
+        self.btn_theme_toggle = ThemeToggleButton()
+        # 点击：临时切到另一主题预览（系统的 colorSchemeChanged 到来时再纠正回系统主题）
+        self.btn_theme_toggle.clicked.connect(self._toggle_theme_preview)
+        top_bar_layout.addWidget(self.btn_theme_toggle)
+        right_layout.addWidget(top_bar)
+
         self.content_stack = CleanStackedWidget()
-        main_layout.addWidget(self.content_stack, 1)
+        right_layout.addWidget(self.content_stack, 1)
+        main_layout.addWidget(right_area, 1)
 
         self._init_page_encrypt()
         self._init_page_decrypt()
@@ -1415,49 +1454,17 @@ class MainWindow(QMainWindow):
         layout.addWidget(container)
         self.content_stack.addWidget(page)
 
-    def show_theme_menu(self):
-        """显示主题选择菜单"""
-        from PySide6.QtWidgets import QMenu
-        menu = QMenu(self)
-
-        t = self.theme_data
-        menu.setStyleSheet(f"""
-            QMenu {{
-                background: {t['panel_elevated']};
-                color: {t['fg']};
-                border: 1px solid {t['border']};
-                border-radius: 10px;
-                padding: 8px;
-            }}
-            QMenu::item {{
-                padding: 10px 24px;
-                border-radius: 6px;
-            }}
-            QMenu::item:selected {{
-                background: {t['accent']};
-                color: white;
-            }}
-        """)
-
-        for theme_name in self.theme_names:
-            action = menu.addAction(theme_name)
-            action.triggered.connect(lambda checked=False, name=theme_name: self.on_theme_selected(name))
-
-        menu.exec(self.btn_theme.mapToGlobal(QPoint(0, self.btn_theme.height())))
-
-    def show_theme_selector(self):
-        """显示主题选择器"""
-        btn_pos = self.btn_theme.mapToGlobal(QPoint(0, 0))
-        popup_x = btn_pos.x() + self.btn_theme.width() + 10
-        popup_y = btn_pos.y() - (self.theme_selector.height() - self.btn_theme.height()) // 2
-        self.theme_selector.show_at(QPoint(popup_x, popup_y))
-
     def on_theme_selected(self, theme_name):
         """主题被选中"""
         self.current_theme_idx = self.theme_names.index(theme_name)
         self.apply_theme()
 
-    def cycle_theme(self):
+    def _toggle_theme_preview(self):
+        """点击太阳/月亮：临时切到另一主题预览（不持久）。
+
+        始终跟随系统：系统 colorSchemeChanged 到来时 _on_system_scheme_changed
+        会将其纠正回系统主题，故此处仅为预览体验。
+        """
         self.current_theme_idx = (self.current_theme_idx + 1) % len(self.theme_names)
         self.apply_theme()
 
@@ -1466,7 +1473,6 @@ class MainWindow(QMainWindow):
         theme_name = self.theme_names[self.current_theme_idx]
         t = THEMES[theme_name]
         self.theme_data = t
-        self.btn_theme.setText(f"{theme_name}")
         native_glass_enabled = self.native_glass.apply(t)
         window_bg = "transparent" if native_glass_enabled else t["bg"]
         main_surface_bg = "transparent" if native_glass_enabled else t["bg"]
@@ -1515,6 +1521,11 @@ class MainWindow(QMainWindow):
         /* 滚动区 viewport 兜底，防止配置滚动区视口冒系统色。 */
         QScrollArea#ConfigScrollArea,
         QScrollArea#ConfigScrollArea > QWidget > QWidget {{
+            background: transparent;
+        }}
+        /* 主题切换顶栏容器：透明，透出 main_surface bg，避免 dark 下冒系统色条。 */
+        QWidget#RightArea,
+        QWidget#ContentTopBar {{
             background: transparent;
         }}
 

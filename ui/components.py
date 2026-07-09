@@ -186,6 +186,69 @@ class BrandLogoBadge(QWidget):
         draw_icon(painter, "brand-shield", icon_rect, accent, 1.85)
 
 
+class ThemeToggleButton(QWidget):
+    """右上角日/月主题切换器：自绘太阳/月亮线图，点击发 clicked。
+
+    paint 时从 ``window().theme_data`` 判当前是 Dark 还是 Light：以 fg 亮度
+    判定（与 SmoothScrollArea.update_theme 一致），Dark 画月亮、Light 画太阳。
+    线稿颜色用 fg。hover 时画淡圆角背景（用 sidebar_hover 半透明），鼠标进/
+    出各一次、无高频来回累积问题，故无需 CompositionMode_Source 清底。
+    """
+    clicked = Signal()
+
+    def __init__(self, size=32, parent=None):
+        super().__init__(parent)
+        self.setObjectName("ThemeToggleButton")
+        self.setFixedSize(size, size)
+        self.setCursor(Qt.PointingHandCursor)
+        self._hover = False
+
+    def _current_is_dark(self):
+        theme = self.window().theme_data if hasattr(self.window(), 'theme_data') else None
+        from ui.themes import THEMES
+        theme = theme or THEMES["Light"]
+        return qcolor(theme.get('fg', '#111827')).lightness() > 128
+
+    def enterEvent(self, event):
+        self._hover = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._hover = False
+        self.update()
+        super().leaveEvent(event)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
+
+    def paintEvent(self, event):
+        theme = self.window().theme_data if hasattr(self.window(), 'theme_data') else None
+        from ui.themes import THEMES
+        theme = theme or THEMES["Light"]
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        rect = QRectF(self.rect())
+
+        if self._hover:
+            hover_bg = qcolor(theme.get('sidebar_hover', 'rgba(0,0,0,0.045)'))
+            hover_bg.setAlpha(36)
+            painter.setBrush(hover_bg)
+            painter.setPen(Qt.NoPen)
+            painter.drawRoundedRect(rect.adjusted(2, 2, -2, -2), 7, 7)
+
+        # 图标：Dark 画月亮、Light 画太阳；线稿颜色用 fg
+        icon_color = qcolor(theme.get('fg', '#111827'))
+        icon_name = "moon" if self._current_is_dark() else "sun"
+        pad = 5.0
+        painter.setPen(QPen(icon_color, 1.85, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        painter.setBrush(Qt.NoBrush)
+        draw_icon(painter, icon_name, rect.adjusted(pad, pad, -pad, -pad), icon_color, 1.85)
+
+
 class SectionHeader(QWidget):
     """Compact icon + title row for cards and panels."""
     def __init__(self, title, icon_name="doc", parent=None):
@@ -1008,18 +1071,23 @@ class AnimatedSidebarButton(QPushButton):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        # 每帧先用 Source 模式透明覆盖整面，清除上一帧残留的半透明 hover/选中
-        # 像素。否则默认 SourceOver 会把新一帧半透明背景叠在旧帧之上，鼠标快速
-        # 来回时半透明层层累加 → 底色越来越深呈深灰、且逐帧不同 → “抽搐”。
-        # （同 CleanStackedWidget.paintEvent 的清底做法）
+        from ui.themes import THEMES
+        theme = self.window().theme_data if hasattr(self.window(), 'theme_data') else THEMES["Light"]
+
+        # 每帧先清底，清除上一帧残留的半透明 hover/选中像素。否则默认
+        # CompositionMode_SourceOver 会把新一帧半透明背景叠在旧帧之上，鼠标快速
+        # 来回时半透明层层累加 → 底色越来越深呈深灰 → “抽搐”。
+        # 清底色用“侧栏 sidebar 色”而非透明：透明会擦穿父侧栏半透明色、露出
+        # 窗口 bg 渐变实色，使 hover 之外变成“与环境色不同的长方形、圆角感丢失”。
+        # 清成 sidebar 色既擦掉残留，又让按钮区维持侧栏正常观感、保留 capsule
+        # 圆角 hover 的对比。Source 模式按源 alpha 覆盖，故把 alpha 拉满不透明。
         painter.setCompositionMode(QPainter.CompositionMode_Source)
-        painter.fillRect(self.rect(), QColor(0, 0, 0, 0))
+        side_bg = qcolor(theme.get('sidebar', 'rgba(248,250,252,0.84)'))
+        side_bg.setAlpha(255)
+        painter.fillRect(self.rect(), side_bg)
         painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
 
         rect = self.rect()
-
-        from ui.themes import THEMES
-        theme = self.window().theme_data if hasattr(self.window(), 'theme_data') else THEMES["Light"]
 
         # === 胶囊背景区域 ===
         capsule_rect = rect.adjusted(6, 4, -6, -4)
@@ -1066,6 +1134,99 @@ class SidebarNavButton(AnimatedSidebarButton):
     """Compatibility alias with the explicit stable navigation API."""
     pass
 
+
+class ThemeToggleButton(QPushButton):
+    """右上角主题切换按钮：太阳/月亮，点击临时切换主题。
+
+    根据当前应用的主题（``self.window().theme_data`` 的 fg 亮度）画日（Light）
+    或月（Dark），paint 时现取主题 → 自动跟随。颜色用 ``fg_secondary``、hover
+    微淡圆形底。语义：始终跟随系统，点击仅临时预览（不持久，由主窗口在
+    colorSchemeChanged 信号到来时纠正回系统主题）。
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("ThemeToggleButton")
+        self.setFixedSize(34, 34)
+        self.setCursor(Qt.PointingHandCursor)
+        self._hover_progress = 0.0
+        self._hover_anim = QPropertyAnimation(self, b"hoverProgress", self)
+        self._hover_anim.setDuration(160)
+        self._hover_anim.setEasingCurve(QEasingCurve.OutCubic)
+
+    def get_hover_progress(self):
+        return self._hover_progress
+
+    def set_hover_progress(self, v):
+        self._hover_progress = float(v)
+        self.update()
+
+    hoverProgress = Property(float, get_hover_progress, set_hover_progress)
+
+    def enterEvent(self, event):
+        self._hover_anim.stop()
+        self._hover_anim.setStartValue(self._hover_progress)
+        self._hover_anim.setEndValue(1.0)
+        self._hover_anim.start()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._hover_anim.stop()
+        self._hover_anim.setStartValue(self._hover_progress)
+        self._hover_anim.setEndValue(0.0)
+        self._hover_anim.start()
+        super().leaveEvent(event)
+
+    def paintEvent(self, event):
+        from ui.themes import THEMES
+        theme = self.window().theme_data if hasattr(self.window(), 'theme_data') else THEMES["Light"]
+        # 用 fg 亮度判定当前主题深浅（与 SmoothScrollArea 同口径）
+        fg = qcolor(theme.get('fg', '#111827'))
+        is_dark = fg.lightness() > 128
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setCompositionMode(QPainter.CompositionMode_Source)
+        # 清底：透明，切回器自身背景透明透出顶栏/窗口
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 0))
+        painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
+
+        rect = QRectF(self.rect())
+        center = rect.center()
+        # hover 淡圆形底
+        if self._hover_progress > 0.01:
+            hover_bg = qcolor(theme.get('sidebar_hover', 'rgba(15,23,42,0.045)'))
+            hover_bg.setAlpha(max(18, int(110 * self._hover_progress)))
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(hover_bg)
+            painter.drawEllipse(rect.adjusted(2, 2, -2, -2))
+
+        icon_color = qcolor(theme.get('fg_secondary', '#475569'))
+        pen = QPen(icon_color, 1.9, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+
+        cx, cy = center.x(), center.y()
+        if is_dark:
+            # 月牙：大圆减右移小圆，OddEvenFill 实心月牙
+            big = QRectF(cx - 8, cy - 8, 16, 16)
+            moon = QPainterPath()
+            moon.setFillRule(Qt.OddEvenFill)
+            moon.addEllipse(big)
+            cut = QRectF(cx - 2.5, cy - 8, 14, 16)   # 右移的小圆，咬出一牙
+            moon.addEllipse(cut)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(icon_color)
+            painter.drawPath(moon)
+        else:
+            # 日：圆 + 八条短射线
+            painter.drawEllipse(QPointF(cx, cy), 5.2, 5.2)
+            rays = [(-1, 0), (1, 0), (0, -1), (0, 1), (-0.707, -0.707), (0.707, -0.707), (-0.707, 0.707), (0.707, 0.707)]
+            for dx, dy in rays:
+                x1 = cx + dx * 8.5
+                y1 = cy + dy * 8.5
+                x2 = cx + dx * 11.5
+                y2 = cy + dy * 11.5
+                painter.drawLine(QPointF(x1, y1), QPointF(x2, y2))
 
 class ModernButton(QPushButton):
     """

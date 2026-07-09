@@ -78,15 +78,23 @@ def draw_icon(painter, name, rect, color, stroke_width=1.8):
         painter.drawEllipse(p(12, 14), 0.95 * sx, 0.95 * sy)
         line(12, 15, 12, 17)
     elif name in {"unlock", "decrypt"}:
-        painter.drawRoundedRect(rr(5.5, 10, 13, 10), 3.2 * sx, 3.2 * sy)
-        path = QPainterPath()
-        path.moveTo(p(8.3, 10))
-        path.lineTo(p(8.3, 8.2))
-        path.cubicTo(p(8.3, 4.9), p(14.9, 4.7), p(15.8, 7.8))
-        path.lineTo(p(17.5, 7.8))
-        painter.drawPath(path)
-        painter.drawEllipse(p(12, 14), 0.95 * sx, 0.95 * sy)
-        line(12, 15, 12, 17)
+        # 解密：改画一把朝右上倾斜的钥匙（decrypt-key），与加密的闭合锁
+        # 一眼可分，且区别于侧栏「密钥」导航那把端正的 key。
+        # 用局部坐标系（以图标中心为原点）画钥匙，绕开全局 p()/line()
+        # 在旋转后语义错乱的问题；这里 sx≈sy≈1 按 24 网格单位估算。
+        painter.save()
+        cx = r.center().x()
+        cy = r.center().y()
+        painter.translate(cx, cy)
+        painter.rotate(-35)
+        # 钥匙头：圆环
+        painter.drawEllipse(QRectF(-7.5, -3.5, 8, 8))
+        # 钥匙杆：从环心朝右上伸出
+        painter.drawLine(QPointF(0.5, 0.5), QPointF(9.5, 0.5))
+        # 钥匙齿
+        painter.drawLine(QPointF(6.5, 0.5), QPointF(6.5, 3.0))
+        painter.drawLine(QPointF(9.0, 0.5), QPointF(9.0, 2.5))
+        painter.restore()
     elif name in {"key", "credential", "rsa", "keypair", "system-key"}:
         painter.drawEllipse(rr(4, 8.3, 7.2, 7.2))
         painter.drawEllipse(p(7.6, 11.9), 1.0 * sx, 1.0 * sy)

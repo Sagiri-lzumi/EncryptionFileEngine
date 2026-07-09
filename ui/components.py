@@ -1099,7 +1099,9 @@ class ModernButton(QPushButton):
         self.setFont(QFont(get_system_font_family(), 11, QFont.DemiBold))
         self.setIconSize(QSize(18, 18))
         if icon_name:
-            self.setMinimumWidth(92)
+            # 下限放低，让按钮按内容(图标+文字)自适应，而不是被 92 卡住
+            # 把最末字顶到右 padding 之外被裁。
+            self.setMinimumWidth(76)
 
         # 点击动画属性
         self._press_scale = 1.0
@@ -1211,7 +1213,7 @@ class ModernButton(QPushButton):
                     border: 1px solid {theme.get('glass_border_subtle', 'rgba(255, 255, 255, 0.42)')};
                     border-bottom: 1px solid {theme.get('border_dark', 'rgba(15, 23, 42, 0.08)')};
                     border-radius: 9px;
-                    padding: 0 18px;
+                    padding: 0 14px 0 16px;
                     font-weight: 600;
                     font-size: 13px;
                     min-height: 40px;

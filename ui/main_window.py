@@ -798,30 +798,27 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(self.sidebar)
 
-        # === 2. 右侧内容区（顶部主题切换栏 + 内容栈）===
+        # === 2. 右侧内容区（内容栈直接占满，切换器悬浮右上角）===
         right_area = QWidget()
         right_area.setObjectName("RightArea")
         right_layout = QVBoxLayout(right_area)
         right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(8)
-
-        # 顶栏：太阳/月亮主题切换器靠右
-        top_bar = QWidget()
-        top_bar.setObjectName("ContentTopBar")
-        top_bar.setFixedHeight(34)
-        top_bar.setAttribute(Qt.WA_StyledBackground, True)
-        top_bar_layout = QHBoxLayout(top_bar)
-        top_bar_layout.setContentsMargins(8, 0, 4, 0)
-        top_bar_layout.addStretch()
-        self.btn_theme_toggle = ThemeToggleButton()
-        # 点击：临时切到另一主题预览（系统的 colorSchemeChanged 到来时再纠正回系统主题）
-        self.btn_theme_toggle.clicked.connect(self._toggle_theme_preview)
-        top_bar_layout.addWidget(self.btn_theme_toggle)
-        right_layout.addWidget(top_bar)
+        right_layout.setSpacing(0)
 
         self.content_stack = CleanStackedWidget()
         right_layout.addWidget(self.content_stack, 1)
         main_layout.addWidget(right_area, 1)
+
+        # 日/月切换器：悬浮覆盖层，浮在右侧内容区右上角、不占布局高度。
+        # 不放进任何 layout（否则会挤占内容区），以 right_area 为父手动 move()
+        # 定位，并跟随窗口 resize/show 更新位置 → 真正回到"右上角"而非横栏右端。
+        self._theme_toggle_host = right_area
+        self.btn_theme_toggle = ThemeToggleButton()
+        self.btn_theme_toggle.setParent(right_area)
+        self.btn_theme_toggle.raise_()
+        # 点击：临时切到另一主题预览（系统的 colorSchemeChanged 到来时再纠正回系统主题）
+        self.btn_theme_toggle.clicked.connect(self._toggle_theme_preview)
+        self._position_theme_toggle()
 
         self._init_page_encrypt()
         self._init_page_decrypt()
@@ -912,6 +909,30 @@ class MainWindow(QMainWindow):
         """窗口可见后再尝试挂载 macOS 原生玻璃层。"""
         super().showEvent(event)
         self.apply_theme()
+        self._position_theme_toggle()
+
+    def resizeEvent(self, event):
+        """窗口缩放时同步右上角悬浮切换器位置。"""
+        super().resizeEvent(event)
+        self._position_theme_toggle()
+
+    def _position_theme_toggle(self):
+        """把日/月主题切换器贴到右侧内容区右上角（overlay，不占布局高度）。
+
+        切换器以 right_area 为父、手动 move：x = 宽度 - 自身宽 - 右边距，y = 顶边距。
+        首次布局完成前 right_area 尺寸可能为 0，用 max 兜底避免负坐标。窗口
+        resize/show 后再各调一次，最终落到右上角。
+        """
+        host = getattr(self, "_theme_toggle_host", None)
+        btn = getattr(self, "btn_theme_toggle", None)
+        if host is None or btn is None:
+            return
+        margin = 8
+        w = max(btn.width(), 1)
+        x = max(0, host.width() - w - margin)
+        y = margin
+        btn.move(x, y)
+        btn.raise_()
 
     def switch_page(self, index):
         """切换页面"""
@@ -1523,9 +1544,9 @@ class MainWindow(QMainWindow):
         QScrollArea#ConfigScrollArea > QWidget > QWidget {{
             background: transparent;
         }}
-        /* 主题切换顶栏容器：透明，透出 main_surface bg，避免 dark 下冒系统色条。 */
-        QWidget#RightArea,
-        QWidget#ContentTopBar {{
+        /* 右侧内容区容器：透明，透出 main_surface bg，避免 dark 下冒系统色条。切换器
+           以 overlay 浮于其上，自身在 ThemeToggleButton.paintEvent 已清底透明。 */
+        QWidget#RightArea {{
             background: transparent;
         }}
 

@@ -1191,7 +1191,6 @@ class ThemeToggleButton(QPushButton):
         painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
 
         rect = QRectF(self.rect())
-        center = rect.center()
         # hover 淡圆形底
         if self._hover_progress > 0.01:
             hover_bg = qcolor(theme.get('sidebar_hover', 'rgba(15,23,42,0.045)'))
@@ -1201,32 +1200,12 @@ class ThemeToggleButton(QPushButton):
             painter.drawEllipse(rect.adjusted(2, 2, -2, -2))
 
         icon_color = qcolor(theme.get('fg_secondary', '#475569'))
-        pen = QPen(icon_color, 1.9, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
-        painter.setPen(pen)
-        painter.setBrush(Qt.NoBrush)
+        # 复用 ui/icons.py 的矢量 sun/moon：与侧栏/徽标同款线风，弯月左右对称、
+        # 与太阳同坐标系视觉重量一致，告别自绘 OddEvenFill 实心月牙"被啃一块"的观感。
+        icon_name = "moon" if is_dark else "sun"
+        icon_rect = QRectF(self.rect()).adjusted(6, 6, -6, -6)
+        draw_icon(painter, icon_name, icon_rect, icon_color, 1.85)
 
-        cx, cy = center.x(), center.y()
-        if is_dark:
-            # 月牙：大圆减右移小圆，OddEvenFill 实心月牙
-            big = QRectF(cx - 8, cy - 8, 16, 16)
-            moon = QPainterPath()
-            moon.setFillRule(Qt.OddEvenFill)
-            moon.addEllipse(big)
-            cut = QRectF(cx - 2.5, cy - 8, 14, 16)   # 右移的小圆，咬出一牙
-            moon.addEllipse(cut)
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(icon_color)
-            painter.drawPath(moon)
-        else:
-            # 日：圆 + 八条短射线
-            painter.drawEllipse(QPointF(cx, cy), 5.2, 5.2)
-            rays = [(-1, 0), (1, 0), (0, -1), (0, 1), (-0.707, -0.707), (0.707, -0.707), (-0.707, 0.707), (0.707, 0.707)]
-            for dx, dy in rays:
-                x1 = cx + dx * 8.5
-                y1 = cy + dy * 8.5
-                x2 = cx + dx * 11.5
-                y2 = cy + dy * 11.5
-                painter.drawLine(QPointF(x1, y1), QPointF(x2, y2))
 
 class ModernButton(QPushButton):
     """

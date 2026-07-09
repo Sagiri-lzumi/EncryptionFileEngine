@@ -1007,6 +1007,15 @@ class AnimatedSidebarButton(QPushButton):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
+
+        # 每帧先用 Source 模式透明覆盖整面，清除上一帧残留的半透明 hover/选中
+        # 像素。否则默认 SourceOver 会把新一帧半透明背景叠在旧帧之上，鼠标快速
+        # 来回时半透明层层累加 → 底色越来越深呈深灰、且逐帧不同 → “抽搐”。
+        # （同 CleanStackedWidget.paintEvent 的清底做法）
+        painter.setCompositionMode(QPainter.CompositionMode_Source)
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 0))
+        painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
+
         rect = self.rect()
 
         from ui.themes import THEMES

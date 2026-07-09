@@ -241,25 +241,33 @@ def draw_icon(painter, name, rect, color, stroke_width=1.8):
                 dy = 1 if y > 12 else -1
                 painter.drawLine(p(12 + 4.4 * dx, 12 + 4.4 * dy), p(x, y))
     elif name in {"moon", "dark"}:
-        # 对称弯月（开口朝右）：大圆减一个【内含于大圆、圆心右移】的小圆——
-        # 大圆内·小圆外的差集 = 纯实心月牙。必须让小圆半径 < 大圆半径且小圆整圆
-        # 落在大圆内（圆心距 + 小半径 ≤ 大半径），否则等径相减会在大圆外多出一块右瓣。
-        # 月牙凹口在右、外缘在左；小圆右移越多月牙越窄，半径越小月牙越厚。
-        Ro = 7.4                       # 外（大）圆半径（24 网格单位）
-        Ri = 6.0                       # 内圆半径（必须 < Ro）
+        # 对称镰月（开口朝右、深弯）。两等径圆 OddEven 填色差集（outer 减 inner），
+        # 并 clip 到 outer——小圆右移量 d 不再受"小圆需内含于大圆"约束：
+        #   · outer 内 · inner 外 = 月牙肉（OddEven 单层 → 填）
+        #   · outer 内 · inner 内 = 凹口（双层 → 不填）
+        #   · inner 溢出 outer 右侧的区 → 被 clipPath 裁掉，绝无右瓣。
+        # d 控制镰月宽窄：越大越窄成镰。旧版_nama=1.2 贴近内含极限咬得太浅、像
+        # "整圆缺一牙"很糊；这里 d=4.6 → h=√(R²-(d/2)²)≈7.03，深弯、端部圆润不尖。
+        Ro = 7.4                        # 外圆半径（24 网格单位）
+        Ri = 7.4                        # 内圆等径（端点同 x、嘴部对称）
         cy = 12.0
-        outer_cx = 11.2                # 大圆心略偏左，给月牙整体留点右呼吸
-        dist = 1.2                     # 圆心距：须 ≤ Ro-Ri=1.4 保证小圆整圆在大圆内（否则 OddEven 在大圆外多出右瓣）；1.2 贴近内壁、咬出饱满弯口
-        inner_cx = outer_cx + dist
-        outer = rr(outer_cx - Ro, cy - Ro, 2 * Ro, 2 * Ro)
-        inner = rr(inner_cx - Ri, cy - Ri, 2 * Ri, 2 * Ri)
-        moon = QPainterPath()
-        moon.setFillRule(Qt.OddEvenFill)
-        moon.addEllipse(outer)
-        moon.addEllipse(inner)
+        outer_cx = 11.2                 # 外圆心略偏左，整月留右呼吸
+        d = 4.6                         # 圆心距，d/Ro≈0.62，明显镰
+        inner_cx = outer_cx + d
+        outer_rect = rr(outer_cx - Ro, cy - Ro, 2 * Ro, 2 * Ro)
+        inner_rect = rr(inner_cx - Ri, cy - Ri, 2 * Ri, 2 * Ri)
+        clip = QPainterPath()
+        clip.addEllipse(outer_rect)
+        diff = QPainterPath()
+        diff.setFillRule(Qt.OddEvenFill)
+        diff.addEllipse(outer_rect)
+        diff.addEllipse(inner_rect)
+        painter.save()
+        painter.setClipPath(clip)
         painter.setBrush(c)
         painter.setPen(Qt.NoPen)
-        painter.drawPath(moon)
+        painter.drawPath(diff)
+        painter.restore()
     else:
         painter.drawRoundedRect(rr(5, 5, 14, 14), 4 * sx, 4 * sy)
         line(8.5, 12, 15.5, 12)

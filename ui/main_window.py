@@ -51,7 +51,7 @@ from ui.components import (AnimatedSidebarButton, ModernButton, DragDropListWidg
                            DropDownComboBox, SystemSwitchButton, GlassProgressBar,
                            CleanStackedWidget, PageSurface, SectionHeader, IconBadge,
                            TaskWorkspacePanel, InspectorSection, ExecutionFooter,
-                           KeyPairListRow)
+                           KeyPairListRow, BrandLogoBadge)
 from ui.platform_fonts import get_monospace_font_qss, get_system_font_family, get_system_font_qss
 from ui.utils import ensure_long_path, format_size, get_drive_root
 
@@ -719,12 +719,18 @@ class MainWindow(QMainWindow):
         v_sidebar.setContentsMargins(14, 22, 14, 18)
         v_sidebar.setSpacing(7)
 
-        # 标题
+        # 标题（品牌徽章 + 文字横向组合）
+        title_row = QWidget()
+        h_title = QHBoxLayout(title_row)
+        h_title.setContentsMargins(0, 0, 0, 0)
+        h_title.setSpacing(10)
+        logo_badge = BrandLogoBadge("E", 36)
+        h_title.addWidget(logo_badge, 0, Qt.AlignVCenter)
         lbl_title = QLabel("Encryption Studio")
         lbl_title.setObjectName("AppTitle")
         lbl_title.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        lbl_title.setFixedHeight(44)
-        v_sidebar.addWidget(lbl_title)
+        h_title.addWidget(lbl_title, 1, Qt.AlignVCenter)
+        v_sidebar.addWidget(title_row)
 
         lbl_nav = QLabel("WORKSPACE")
         lbl_nav.setObjectName("SidebarGroupLabel")

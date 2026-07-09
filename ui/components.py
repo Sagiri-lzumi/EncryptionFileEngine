@@ -160,6 +160,53 @@ class IconBadge(QWidget):
         draw_icon(painter, self.icon_name, icon_rect, icon_color, 1.85)
 
 
+class BrandLogoBadge(QWidget):
+    """左上角品牌徽章：accent 渐变圆角方块 + 居中白色粗体字母 "E"。
+
+    渲染时从 ``self.window().theme_data`` 现取主题 token，因此自动跟随主题
+    切换（与 IconBadge 同机制），无需额外的 update_theme 接线。全矢量自绘，
+    不依赖任何图片资源，跨平台一致。
+    """
+    def __init__(self, letter="E", size=36, parent=None):
+        super().__init__(parent)
+        self.setObjectName("BrandLogoBadge")
+        self._letter = letter
+        self.setFixedSize(size, size)
+        self.setAttribute(Qt.WA_StyledBackground, False)
+
+    def paintEvent(self, event):
+        theme = self.window().theme_data if hasattr(self.window(), 'theme_data') else None
+        from ui.themes import THEMES
+        theme = theme or THEMES["Light"]
+        rect = QRectF(self.rect())
+
+        # 渐变背景：左上 accent_hover → 右下 accent，视觉与 accent_gradient token 一致。
+        # 这里直接用两个纯色 token 构 QLinearGradient，避免解析 accent_gradient QSS 字符串。
+        c_top = qcolor(theme.get('accent_hover', '#2994FF'))
+        c_bottom = qcolor(theme.get('accent', '#007AFF'))
+        gradient = QLinearGradient(rect.topLeft(), rect.bottomRight())
+        gradient.setColorAt(0.0, c_top)
+        gradient.setColorAt(1.0, c_bottom)
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        radius = 9.0
+        # 背景圆角
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(gradient))
+        painter.drawRoundedRect(rect, radius, radius)
+        # 顶部高光内边，增加质感
+        painter.setPen(QPen(QColor(255, 255, 255, 64), 1.0))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), radius - 0.5, radius - 0.5)
+        # 居中白色粗体字母
+        painter.setPen(QPen(QColor(255, 255, 255, 255)))
+        font = QFont(get_system_font_family(), 14, QFont.Bold)
+        font.setLetterSpacing(QFont.AbsoluteSpacing, 0)
+        painter.setFont(font)
+        painter.drawText(rect, Qt.AlignCenter, self._letter)
+
+
 class SectionHeader(QWidget):
     """Compact icon + title row for cards and panels."""
     def __init__(self, title, icon_name="doc", parent=None):

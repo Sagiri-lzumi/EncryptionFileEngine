@@ -649,6 +649,10 @@ class CustomCheckBox(QCheckBox):
         self.setStyleSheet("")  # 清除默认样式
         self.setMinimumHeight(36)
 
+        # 主题缓存：避免 paintEvent 每帧 from import + self.window().theme_data 链查。
+        # 由 MainWindow.apply_theme 喂入；未喂入时在 paintEvent 首帧惰性取一次兜底。
+        self._theme = None
+
         # 动画属性：用于平滑过渡勾选状态
         self._check_progress = 1.0 if self.isChecked() else 0.0
         self._check_anim = QPropertyAnimation(self, b"checkProgress", self)
@@ -666,20 +670,55 @@ class CustomCheckBox(QCheckBox):
 
     checkProgress = Property(float, get_check_progress, set_check_progress)
 
-    def nextCheckState(self):
-        """切换选中状态时触发动画"""
-        super().nextCheckState()
+    def update_theme(self, theme):
+        """缓存主题，供 paintEvent 直接读取，避免每帧 import/链查。"""
+        self._theme = theme
+        self.update()
+
+    def _sync_progress_to_state(self, animate):
+        """
+        把 _check_progress 对齐到当前 isChecked()。
+
+        - animate=True（用户鼠标点击走 nextCheckState）：跑 180ms 过渡，有勾出动画。
+        - animate=False（setChecked 等程序化置位）：直接对齐进度、不跑动画，
+          避免程序化改变又触发一段动画/连锁，消除“选中态变了进度没变”的错乱（R2）。
+        无论哪条路径都显式 setStartValue，避免快速连点时动画从上次的中间值
+        或旧 startValue 起而出现“勾回退/愣一下”的间歇卡顿（R1）。
+        """
+        target = 1.0 if self.isChecked() else 0.0
         self._check_anim.stop()
-        self._check_anim.setEndValue(1.0 if self.isChecked() else 0.0)
-        self._check_anim.start()
+        if animate:
+            self._check_anim.setStartValue(self._check_progress)
+            self._check_anim.setEndValue(target)
+            self._check_anim.start()
+        else:
+            self._check_progress = target
+            self.update()
+
+    def setChecked(self, checked):
+        """
+        程序化置位：同步进度但不跑动画。
+        覆写后 check_constraints 里大量的 setChecked(False) 不再留下
+        “选中态已变为 unchecked、_check_progress 仍停在 1.0”的脱钩隐患。
+        """
+        super().setChecked(checked)
+        self._sync_progress_to_state(animate=False)
+
+    def nextCheckState(self):
+        """用户鼠标点击切换选中状态时触发动画"""
+        super().nextCheckState()
+        self._sync_progress_to_state(animate=True)
 
     def paintEvent(self, event):
         """自定义绘制复选框和文字"""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        from ui.themes import THEMES
-        theme = self.window().theme_data if hasattr(self.window(), 'theme_data') else THEMES["Light"]
+        # 主题优先用缓存；未喂入则惰性取一次（常态下 apply_theme 已喂入，此兜底极少走到）。
+        theme = self._theme
+        if theme is None:
+            from ui.themes import THEMES
+            theme = self.window().theme_data if hasattr(self.window(), 'theme_data') else THEMES["Light"]
         enabled = self.isEnabled()
 
         # 复选框尺寸和位置
@@ -739,8 +778,13 @@ class CustomCheckBox(QCheckBox):
             font.setWeight(QFont.Medium)
             painter.setFont(font)
             text_rect = QRect(box_x + box_size + 12, 0, self.width() - box_x - box_size - 12, self.height())
-            text = QFontMetrics(font).elidedText(self.text(), Qt.ElideRight, max(0, text_rect.width()))
-            painter.drawText(text_rect, Qt.AlignVCenter | Qt.AlignLeft, text)
+            # 省略文字恒定，仅随 (text, 可用宽度) 变化，缓存后避免每帧重建 QFontMetrics + 重算 elidedText。
+            avail_w = max(0, text_rect.width())
+            cache_key = (self.text(), avail_w)
+            if getattr(self, "_elided_cache_key", None) != cache_key:
+                self._elided_cache_key = cache_key
+                self._elided_cache_text = QFontMetrics(font).elidedText(self.text(), Qt.ElideRight, avail_w)
+            painter.drawText(text_rect, Qt.AlignVCenter | Qt.AlignLeft, self._elided_cache_text)
 
 
 class AnimatedSidebarButton(QPushButton):

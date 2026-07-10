@@ -1978,6 +1978,13 @@ class MainWindow(QMainWindow):
         self.ui_enc["list"].update_theme(t)
         self.ui_dec["list"].update_theme(t)
 
+        # 主题喂给 CustomCheckBox，使其 paintEvent 直接读缓存、免每帧 import/链查（R3）。
+        for ui in (self.ui_enc, self.ui_dec):
+            for key in ("chk_struct", "chk_dir_name_enc", "chk_ssd", "chk_name", "chk_del"):
+                chk = ui.get(key)
+                if chk is not None:
+                    chk.update_theme(t)
+
         if "scroll_area" in self.ui_enc:
             self.ui_enc["scroll_area"].update_theme(t)
         if "scroll_area" in self.ui_dec:

@@ -303,6 +303,9 @@ class TaskWorkspacePanel(QFrame):
         title_box.addWidget(self.subtitle_label)
         h_header.addLayout(title_box)
         h_header.addStretch()
+        # 避让右上角悬浮的 ThemeToggleButton overlay（34 宽 + 8 margin + 8 间隙）:
+        # 不改切换器定位，仅让计数药丸左移到其投影之外，两者互不遮挡。
+        h_header.addSpacing(50)
 
         self.count_label = QLabel("0 个文件")
         self.count_label.setObjectName("QueueCounter")
@@ -1114,8 +1117,13 @@ class AnimatedSidebarButton(QPushButton):
 
         accent_color = qcolor(theme.get('accent', '#007AFF'))
         icon_color = accent_color if self._check_progress > 0.35 else qcolor(theme.get('fg_tertiary', '#94A3B8'))
-        icon_rect = QRectF(21, 12, 20, 20)
-        draw_icon(painter, self.icon_emoji, icon_rect, icon_color, 1.95)
+        # 以 44×210 校准，与旧硬坐标 (21,12,20×20) 逐像素等价；改相对计算后
+        # 行高/宽度/字号一变也不会错位。round 防止 Retina(DPR=2)亚像素糊。
+        icon_size = 20
+        ix = round(rect.left() + 21)
+        iy = rect.center().y() - icon_size / 2      # 44 高下 = 12 ✓
+        icon_rect = QRectF(ix, iy, icon_size, icon_size)
+        draw_icon(painter, self.icon_emoji, icon_rect, icon_color, 1.85)
 
         if self._check_progress > 0.35:
             accent_hex = theme.get('accent', '#6366F1')
@@ -1127,7 +1135,10 @@ class AnimatedSidebarButton(QPushButton):
         font_text.setPointSize(11)
         font_text.setWeight(QFont.DemiBold)
         painter.setFont(font_text)
-        painter.drawText(QRectF(54, 0, rect.width() - 62, self.height()), Qt.AlignVCenter | Qt.AlignLeft, self.text())
+        # 文字紧跟图标右缘 + 原间隙 13 → tx = 54 ✓；可用宽随右缘走 = width-62 ✓
+        tx = ix + icon_size + 13
+        tw = rect.right() - tx - 8
+        painter.drawText(QRectF(tx, 0, tw, rect.height()), Qt.AlignVCenter | Qt.AlignLeft, self.text())
 
 
 class SidebarNavButton(AnimatedSidebarButton):
@@ -1197,7 +1208,10 @@ class ThemeToggleButton(QPushButton):
             hover_bg.setAlpha(max(18, int(110 * self._hover_progress)))
             painter.setPen(Qt.NoPen)
             painter.setBrush(hover_bg)
-            painter.drawEllipse(rect.adjusted(2, 2, -2, -2))
+            # 胶囊 hover 底：与 AnimatedSidebarButton 同款圆角矩形(radius=7，
+            # 34 高下接近正圆胶囊带切角语义)；旧版 drawEllipse 是 30px 圆、比 22px
+            # 图标大像散光圈，现与侧栏按钮 hover 形态统一。
+            painter.drawRoundedRect(rect.adjusted(2, 2, -2, -2), 7, 7)
 
         icon_color = qcolor(theme.get('fg_secondary', '#475569'))
         # 复用 ui/icons.py 的矢量 sun/moon：与侧栏/徽标同款线风，弯月左右对称、
@@ -1302,7 +1316,7 @@ class ModernButton(QPushButton):
             else:
                 icon_color = theme.get('fg_secondary', '#4B5563')
             if icon_color != self._last_icon_color:
-                self.setIcon(make_icon(self.icon_name, icon_color, 18, 1.95))
+                self.setIcon(make_icon(self.icon_name, icon_color, 18, 1.85))
                 self._last_icon_color = icon_color
 
         if self.color_type == "primary":
@@ -1502,7 +1516,7 @@ class DragDropListWidget(QListWidget):
                 "folder-plus",
                 icon_rect.adjusted(10, 10, -10, -10),
                 qcolor(self.theme_data.get('accent', '#007AFF')),
-                2.0,
+                1.85,
             )
 
             # 主文字

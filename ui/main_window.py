@@ -743,6 +743,10 @@ class MainWindow(QMainWindow):
         self.sidebar = QFrame()
         self.sidebar.setFixedWidth(210)
         self.sidebar.setObjectName("Sidebar")
+        # 确保侧栏 QSS 半透明 background 由该 widget 自绘而非透出父级；
+        # 切主题时半透明旧像素才不会残在透出区形成“底色发暗/发灰”残影。
+        # 姿势与 components.py ContentStack(WA_StyledBackground)一致。
+        self.sidebar.setAttribute(Qt.WA_StyledBackground, True)
 
         v_sidebar = QVBoxLayout(self.sidebar)
         v_sidebar.setContentsMargins(14, 22, 14, 18)
@@ -1964,6 +1968,12 @@ class MainWindow(QMainWindow):
         }}
         """
         self.setStyleSheet(qss)
+        # 侧栏是半透明 sidebar 色叠在 MainSurface 之上的容器，切主题时若不清底，
+        # 旧主题深色像素残在 backing store，新主题半透明色叠上去 → “底色发暗/发灰”
+        # 残影。repaint() 立即强制重绘清掉旧像素；放 setStyleSheet 之后、子件 update
+        # 之前，保证子件在已清底的新容器上重画、不闪。
+        self.sidebar.repaint()
+
         for btn in self.all_buttons:
             btn.update_theme(t)
 

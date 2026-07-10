@@ -45,7 +45,12 @@ from PySide6.QtGui import (QDesktopServices, QPainter, QColor, QPen, QFont,
 from config import DIRS
 from core.file_cipher import FileCipherEngine
 from core.logger import sys_logger
-from ui.themes import THEMES
+from ui.themes import (
+    THEMES,
+    CONTROL_HEIGHT,
+    THEME_TOGGLE_SIZE,
+    THEME_TOGGLE_MARGIN,
+)
 from ui.native_effects import NativeGlassController
 from ui.components import (AnimatedSidebarButton, ModernButton, DragDropListWidget,
                            CustomCheckBox, SmoothScrollArea,
@@ -927,7 +932,7 @@ class MainWindow(QMainWindow):
         btn = getattr(self, "btn_theme_toggle", None)
         if host is None or btn is None:
             return
-        margin = 8
+        margin = THEME_TOGGLE_MARGIN          # 与右上避让同源（ui.themes）
         w = max(btn.width(), 1)
         x = max(0, host.width() - w - margin)
         y = margin
@@ -1072,7 +1077,7 @@ class MainWindow(QMainWindow):
         txt_pwd = QLineEdit()
         txt_pwd.setEchoMode(QLineEdit.Password)
         txt_pwd.setPlaceholderText("输入密码...")
-        txt_pwd.setFixedHeight(36)  # 减小高度
+        txt_pwd.setFixedHeight(CONTROL_HEIGHT)  # 控件高度统一（ui.themes.CONTROL_HEIGHT）
         v_old_sec.addWidget(txt_pwd)
         v_sec.addWidget(self.old_sec_widget)
 
@@ -1088,7 +1093,7 @@ class MainWindow(QMainWindow):
             v_new_sec.addWidget(lbl_key)
             combo_key = DropDownComboBox()
             combo_key.setPlaceholderText("选择公钥...")
-            combo_key.setFixedHeight(36)  # 减小高度
+            combo_key.setFixedHeight(CONTROL_HEIGHT)  # 控件高度统一（ui.themes.CONTROL_HEIGHT）
             v_new_sec.addWidget(combo_key)
         else:
             lbl_key = QLabel("选择私钥（用于解密）:")
@@ -1096,12 +1101,12 @@ class MainWindow(QMainWindow):
             v_new_sec.addWidget(lbl_key)
             combo_key = DropDownComboBox()
             combo_key.setPlaceholderText("选择私钥...")
-            combo_key.setFixedHeight(36)  # 减小高度
+            combo_key.setFixedHeight(CONTROL_HEIGHT)  # 控件高度统一（ui.themes.CONTROL_HEIGHT）
             v_new_sec.addWidget(combo_key)
             txt_key_pwd = QLineEdit()
             txt_key_pwd.setEchoMode(QLineEdit.Password)
             txt_key_pwd.setPlaceholderText("输入私钥密码...")
-            txt_key_pwd.setFixedHeight(36)  # 减小高度
+            txt_key_pwd.setFixedHeight(CONTROL_HEIGHT)  # 控件高度统一（ui.themes.CONTROL_HEIGHT）
             v_new_sec.addWidget(txt_key_pwd)
 
         v_sec.addWidget(self.new_sec_widget)
@@ -1117,19 +1122,19 @@ class MainWindow(QMainWindow):
         txt_path.setPlaceholderText("源文件目录")
         txt_path.setToolTip("未选择输出目录时，结果会生成在源文件所在目录")
         txt_path.setReadOnly(True)
-        txt_path.setFixedHeight(36)  # 减小高度
+        txt_path.setFixedHeight(CONTROL_HEIGHT)  # 控件高度统一（ui.themes.CONTROL_HEIGHT）
         h_path.addWidget(txt_path, 1)
 
         btn_path = ModernButton("浏览", "normal", "browse")
         btn_path.setMinimumWidth(80)  # 自适应宽度，最小80px
-        btn_path.setFixedHeight(36)
+        # 高度由 QSS(ModernButton#normal min-height = control_height)统一，不再 setFixedHeight
         btn_path.clicked.connect(lambda: self.action_select_dir(is_encrypt))
         self.all_buttons.append(btn_path)
         h_path.addWidget(btn_path)
 
         btn_path_reset = ModernButton("默认", "normal", "back")
         btn_path_reset.setMinimumWidth(72)
-        btn_path_reset.setFixedHeight(36)
+        # 高度由 QSS(control_height)统一
         btn_path_reset.setToolTip("恢复为源文件所在目录")
         btn_path_reset.clicked.connect(lambda: self.action_clear_dir(is_encrypt))
         self.all_buttons.append(btn_path_reset)
@@ -1182,19 +1187,19 @@ class MainWindow(QMainWindow):
         txt_ssd.setPlaceholderText("选择 SSD 缓存路径...")
         txt_ssd.setToolTip("旧系统可使用 SSD 路径作为临时缓存")
         txt_ssd.setReadOnly(True)
-        txt_ssd.setFixedHeight(36)  # 减小高度
+        txt_ssd.setFixedHeight(CONTROL_HEIGHT)  # 控件高度统一（ui.themes.CONTROL_HEIGHT）
         h_ssd.addWidget(txt_ssd, 1)
 
         btn_ssd = ModernButton("选择", "normal", "browse")
         btn_ssd.setMinimumWidth(80)  # 自适应宽度最小80px
-        btn_ssd.setFixedHeight(36)
+        # 高度由 QSS(control_height)统一
         btn_ssd.clicked.connect(lambda: self.action_select_ssd(is_encrypt))
         self.all_buttons.append(btn_ssd)
         h_ssd.addWidget(btn_ssd)
 
         btn_ssd_reset = ModernButton("清除", "normal", "clear")
         btn_ssd_reset.setMinimumWidth(72)
-        btn_ssd_reset.setFixedHeight(36)
+        # 高度由 QSS(control_height)统一
         btn_ssd_reset.setToolTip("清除 SSD 缓存路径")
         btn_ssd_reset.clicked.connect(self.action_clear_ssd)
         self.all_buttons.append(btn_ssd_reset)
@@ -1404,11 +1409,11 @@ class MainWindow(QMainWindow):
         h_new.setSpacing(10)
         self.new_key_name_input = QLineEdit()
         self.new_key_name_input.setPlaceholderText("密钥对名称 (例如: my_key)")
-        self.new_key_name_input.setFixedHeight(36)  # 减小高度
+        self.new_key_name_input.setFixedHeight(CONTROL_HEIGHT)  # 控件高度统一（ui.themes.CONTROL_HEIGHT）
         self.new_key_password_input = QLineEdit()
         self.new_key_password_input.setPlaceholderText("保护密码")
         self.new_key_password_input.setEchoMode(QLineEdit.Password)
-        self.new_key_password_input.setFixedHeight(36)  # 减小高度
+        self.new_key_password_input.setFixedHeight(CONTROL_HEIGHT)  # 控件高度统一（ui.themes.CONTROL_HEIGHT）
         h_new.addWidget(self.new_key_name_input, 2)
         h_new.addWidget(self.new_key_password_input, 1)
         v_new.addLayout(h_new)
@@ -1420,24 +1425,24 @@ class MainWindow(QMainWindow):
         btn_bar.setSpacing(8)
 
         self.btn_gen_new = ModernButton("生成密钥对", "primary", "generate")
-        self.btn_gen_new.setFixedHeight(34)  # 减小高度
+        # 高度由 QSS(primary = control_primary_height 48px)统一，不再强制 34
         self.btn_gen_new.clicked.connect(self.action_generate_keypair)
         self.all_buttons.append(self.btn_gen_new)
         self.btn_gen_new.hide()
 
         self.btn_import_new = ModernButton("导入", "normal", "import")
-        self.btn_import_new.setFixedHeight(34)  # 减小高度
+        # 高度由 QSS(normal = control_height)统一
         self.btn_import_new.clicked.connect(self.action_import_keypair)
         self.all_buttons.append(self.btn_import_new)
         self.btn_import_new.hide()
 
         self.btn_delete_key = ModernButton("删除", "danger", "trash")
-        self.btn_delete_key.setFixedHeight(34)  # 减小高度
+        # 高度由 QSS(danger = control_primary_height)统一
         self.btn_delete_key.clicked.connect(self.action_delete_key)
         self.all_buttons.append(self.btn_delete_key)
 
         self.btn_refresh_keys = ModernButton("刷新", "normal", "refresh")
-        self.btn_refresh_keys.setFixedHeight(34)  # 减小高度
+        # 高度由 QSS(normal = control_height)统一
         self.btn_refresh_keys.clicked.connect(self.action_refresh_keys)
         self.all_buttons.append(self.btn_refresh_keys)
 
@@ -1558,22 +1563,22 @@ class MainWindow(QMainWindow):
         }}
         QLabel#AppTitle {{
             color: {t['fg']};
-            font-size: 16px;
+            font-size: {t.get('title_size', '16px')};
             font-weight: 800;
         }}
         QLabel#AppSubtitle {{
             color: {t['fg_tertiary']};
-            font-size: 11px;
+            font-size: {t.get('caption_size', '11px')};
             font-weight: 500;
         }}
         QLabel#VersionLabel {{
             color: {t['fg_tertiary']};
-            font-size: 11px;
+            font-size: {t.get('caption_size', '11px')};
             font-weight: 500;
         }}
         QLabel#SidebarGroupLabel {{
             color: {t['fg_tertiary']};
-            font-size: 10px;
+            font-size: {t.get('micro_size', '10px')};
             font-weight: 800;
             padding: 0 8px 4px 8px;
         }}
@@ -1588,25 +1593,28 @@ class MainWindow(QMainWindow):
             background: {t['panel_elevated']};
             border: 1px solid {t['glass_border']};
             border-bottom: 1px solid {t['glass_border_subtle']};
-            border-radius: 14px;
+            border-radius: {t.get('radius_panel', '14px')};
         }}
         QLabel#WorkspaceTitle {{
             color: {t['fg']};
-            font-size: 16px;
+            font-size: {t.get('title_size', '16px')};
             font-weight: 800;
         }}
         QLabel#WorkspaceSubtitle {{
             color: {t['fg_secondary']};
-            font-size: 12px;
+            font-size: {t.get('subtitle_size', '12px')};
             font-weight: 500;
         }}
         QLabel#QueueCounter {{
-            color: {t['fg_secondary']};
-            background: {t['surface']};
-            border: 1px solid {t['border']};
-            border-radius: 8px;
-            padding: 5px 10px;
-            font-size: 12px;
+            /* 语义药丸：与 SystemBadge/SystemGlyph 同款 accent 语系，
+               统一"待处理文件数 / 系统徽标 / 系统字标"三者的视觉语系，
+               取代原先中性 surface + border 的孤立配色。 */
+            color: {t['accent']};
+            background: {t['accent_light']};
+            border: 1px solid {t['sidebar_active_border']};
+            border-radius: {t['radius_xs']};
+            padding: 4px 11px;
+            font-size: {t.get('caption_size', '11px')};
             font-weight: 700;
         }}
         QWidget#WorkspaceToolbar {{
@@ -1619,7 +1627,7 @@ class MainWindow(QMainWindow):
             background: {t['panel_elevated']};
             border: 1px solid {t['config_panel_border']};
             border-bottom: 1px solid {t['glass_border_subtle']};
-            border-radius: 14px;
+            border-radius: {t.get('radius_panel', '14px')};
         }}
         QWidget#ConfigTitleArea {{
             background: transparent;
@@ -1641,7 +1649,7 @@ class MainWindow(QMainWindow):
         }}
         QLabel#ExecutionTitle {{
             color: {t['fg_secondary']};
-            font-size: 12px;
+            font-size: {t.get('subtitle_size', '12px')};
             font-weight: 700;
         }}
 
@@ -1652,7 +1660,7 @@ class MainWindow(QMainWindow):
         }}
         QLabel#SubSectionTitle {{
             color: {t['fg_secondary']};
-            font-size: 12px;
+            font-size: {t.get('subtitle_size', '12px')};
             font-weight: 600;
         }}
         QWidget#SectionHeader {{
@@ -1660,18 +1668,18 @@ class MainWindow(QMainWindow):
         }}
         QLabel#SectionHeaderTitle {{
             color: {t['fg']};
-            font-size: 13px;
+            font-size: {t.get('label_size', '13px')};
             font-weight: 700;
         }}
         QLabel#InputLabel {{
             color: {t['fg_secondary']};
-            font-size: 12px;
+            font-size: {t.get('subtitle_size', '12px')};
             font-weight: 500;
         }}
         QLabel#SystemBadge {{
             color: {t['accent']};
             font-weight: 600;
-            font-size: 11px;
+            font-size: {t.get('caption_size', '11px')};
             background: {t['accent_light']};
             padding: 4px 11px;
             border-radius: {t['radius_xs']};
@@ -1685,7 +1693,7 @@ class MainWindow(QMainWindow):
             border-radius: {t['radius_sm']};
             color: {t['fg']};
             padding: 8px 18px;
-            font-size: 13px;
+            font-size: {t.get('label_size', '13px')};
             font-weight: 600;
         }}
         QPushButton:hover {{
@@ -1703,7 +1711,7 @@ class MainWindow(QMainWindow):
             border-radius: {t['radius_md']};
             color: {t['fg']};
             padding: 0 14px;
-            font-size: 13px;
+            font-size: {t.get('label_size', '13px')};
             selection-background-color: {t['accent']};
             selection-color: white;
         }}
@@ -1716,7 +1724,7 @@ class MainWindow(QMainWindow):
         }}
         QComboBox {{
             padding-right: 36px;
-            min-height: 40px;
+            min-height: {t.get('combo_height', '40px')};
         }}
         QComboBox::drop-down {{
             border: none;
@@ -1746,7 +1754,7 @@ class MainWindow(QMainWindow):
             margin-top: 20px;
             padding: 18px 14px 14px 14px;
             font-weight: 600;
-            font-size: 12px;
+            font-size: {t.get('subtitle_size', '12px')};
             color: {t['fg']};
         }}
         QGroupBox#GlassGroupBox::title {{
@@ -1762,7 +1770,7 @@ class MainWindow(QMainWindow):
             background: {t['surface']};
             border: 1px solid {t['glass_border_subtle']};
             border-bottom: 1px solid {t['glass_border_subtle']};
-            border-radius: 10px;
+            border-radius: {t.get('radius_md', '10px')};
         }}
 
         QFrame#ConfigPanelCard {{
@@ -1776,7 +1784,7 @@ class MainWindow(QMainWindow):
         }}
         QLabel#CardTitleLabel {{
             color: {t['fg_secondary']};
-            font-size: 12px;
+            font-size: {t.get('subtitle_size', '12px')};
             font-weight: 600;
         }}
         QWidget#CardContent {{
@@ -1804,17 +1812,17 @@ class MainWindow(QMainWindow):
         QListWidget#TaskQueueList {{
             background: {t['list_bg']};
             border: 1px solid {t['border']};
-            border-radius: 12px;
+            border-radius: {t.get('radius_list', '12px')};
             padding: 8px;
         }}
         QListWidget#KeyPairList {{
             background: {t['list_bg']};
             border: 1px solid {t['glass_border_subtle']};
-            border-radius: 12px;
+            border-radius: {t.get('radius_list', '12px')};
             padding: 6px;
         }}
         QListWidget::item {{
-            border-radius: 8px;
+            border-radius: {t.get('radius_sm', '8px')};
             padding: 10px 14px;
             margin: 3px 4px;
             color: {t['fg']};
@@ -1822,7 +1830,7 @@ class MainWindow(QMainWindow):
         QListWidget#KeyPairList::item {{
             padding: 0;
             margin: 3px 2px;
-            border-radius: 10px;
+            border-radius: {t.get('radius_md', '10px')};
         }}
         QListWidget::item:selected {{
             background: {t['list_item_selected']};
@@ -1844,16 +1852,17 @@ class MainWindow(QMainWindow):
                 stop:0 {t['accent']}, stop:1 {t['accent_hover']});
             border-radius: 3px;
         }}
+        /* 进度条轨道高 6px、圆角 3px = 高/2 的半圆形端，比例约束故保留字面而非 token。 */
 
         QCheckBox {{
             spacing: 10px;
             color: {t['fg']};
-            font-size: 13px;
+            font-size: {t.get('label_size', '13px')};
         }}
         QCheckBox::indicator {{
             width: 20px;
             height: 20px;
-            border-radius: 6px;
+            border-radius: {t.get('radius_xs', '6px')};
             border: 1.5px solid {t['input_border']};
             background: {t['input_bg']};
         }}
@@ -1884,7 +1893,7 @@ class MainWindow(QMainWindow):
         }}
         QLabel#SystemGlyph {{
             color: {t['accent']};
-            font-size: 12px;
+            font-size: {t.get('subtitle_size', '12px')};
             font-weight: 800;
             background: {t['accent_light']};
             border: 1px solid {t['sidebar_active_border']};
@@ -1893,12 +1902,12 @@ class MainWindow(QMainWindow):
         }}
         QLabel#SystemStatusTitle {{
             font-weight: 600;
-            font-size: 14px;
+            font-size: {t.get('section_title_size', '15px')};
             color: {t['accent']};
         }}
         QLabel#SystemStatusDesc {{
             color: {t['fg_secondary']};
-            font-size: 12px;
+            font-size: {t.get('subtitle_size', '12px')};
         }}
         QLabel#InfoTip {{
             color: {t['fg_secondary']};
@@ -1906,7 +1915,7 @@ class MainWindow(QMainWindow):
             background: {t['card_bg']};
             border: 1px solid {t['glass_border_subtle']};
             border-radius: {t['radius_sm']};
-            font-size: 12px;
+            font-size: {t.get('subtitle_size', '12px')};
         }}
         QFrame#KeyInfoPanel QLabel#InfoTip {{
             padding: 0;
@@ -1919,18 +1928,18 @@ class MainWindow(QMainWindow):
         }}
         QLabel#KeyPairName {{
             color: {t['fg']};
-            font-size: 13px;
+            font-size: {t.get('label_size', '13px')};
             font-weight: 800;
         }}
         QLabel#KeyPairMeta {{
             color: {t['fg_secondary']};
-            font-size: 11px;
+            font-size: {t.get('caption_size', '11px')};
             font-weight: 500;
         }}
         QLabel#KeyPairStatus {{
-            border-radius: 7px;
+            border-radius: 7px;  /* 状态药丸：配合 padding 4px 9px 的小药丸近半圆端，孤例保留 */
             padding: 4px 9px;
-            font-size: 11px;
+            font-size: {t.get('caption_size', '11px')};
             font-weight: 800;
         }}
         QLabel#KeyPairStatus[state="ready"] {{
@@ -1951,7 +1960,7 @@ class MainWindow(QMainWindow):
             border-radius: {t['radius_md']};
             padding: 12px;
             font-family: {get_monospace_font_qss()};
-            font-size: 12px;
+            font-size: {t.get('subtitle_size', '12px')};
         }}
         """
         self.setStyleSheet(qss)

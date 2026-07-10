@@ -9,6 +9,8 @@ package on both macOS and Windows.
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap, QPolygonF
 
+from ui.themes import ICON_STROKE
+
 
 def _to_color(value, fallback="#111827"):
     if isinstance(value, QColor):
@@ -40,7 +42,7 @@ def _path_from(points, close=False):
     return path
 
 
-def draw_icon(painter, name, rect, color, stroke_width=1.8):
+def draw_icon(painter, name, rect, color, stroke_width=ICON_STROKE):
     """Draw a named line icon into rect."""
     painter.save()
     painter.setRenderHint(QPainter.Antialiasing, True)
@@ -275,7 +277,7 @@ def draw_icon(painter, name, rect, color, stroke_width=1.8):
     painter.restore()
 
 
-def make_icon(name, color, size=18, stroke_width=1.8):
+def make_icon(name, color, size=18, stroke_width=ICON_STROKE):
     """Return a QIcon containing a rendered vector icon."""
     qsize = QSize(size, size) if isinstance(size, int) else QSize(size)
     pixmap = QPixmap(qsize)

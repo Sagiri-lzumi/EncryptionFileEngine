@@ -14,7 +14,7 @@ Encryption Studio - UI 组件模块
 
 导航组件:
     - AnimatedSidebarButton: 侧边栏导航按钮，带胶囊选中态动画
-    - ThemeSelector: 主题选择器弹出菜单
+    - ThemeToggleButton: 右上角日/月主题切换器（悬浮 overlay）
 
 按钮组件:
     - ModernButton: Apple 风格主按钮，支持渐变和玻璃降级
@@ -31,7 +31,6 @@ Encryption Studio - UI 组件模块
 
 其他:
     - DragDropListWidget: 拖拽文件列表组件
-    - ThemeButton: 主题选择按钮（内部使用）
     - GlassWidget: 液态玻璃效果 Widget
 
 设计规范:
@@ -50,6 +49,7 @@ import re
 
 from ui.platform_fonts import get_system_font_family
 from ui.icons import draw_icon, make_icon
+from ui.themes import THEME_TOGGLE_SIZE, ICON_STROKE
 
 
 def qcolor(value, fallback="#000000", alpha=None):
@@ -157,7 +157,7 @@ class IconBadge(QWidget):
             painter.setPen(QPen(border, 1.0))
             painter.setBrush(bg)
             painter.drawRoundedRect(rect, 8, 8)
-        draw_icon(painter, self.icon_name, icon_rect, icon_color, 1.85)
+        draw_icon(painter, self.icon_name, icon_rect, icon_color, ICON_STROKE)
 
 
 class BrandLogoBadge(QWidget):
@@ -183,70 +183,7 @@ class BrandLogoBadge(QWidget):
         # 内边距让线稿不贴边，与 IconBadge 视觉重量一致
         pad = 2.0
         icon_rect = QRectF(self.rect()).adjusted(pad, pad, -pad, -pad)
-        draw_icon(painter, "brand-shield", icon_rect, accent, 1.85)
-
-
-class ThemeToggleButton(QWidget):
-    """右上角日/月主题切换器：自绘太阳/月亮线图，点击发 clicked。
-
-    paint 时从 ``window().theme_data`` 判当前是 Dark 还是 Light：以 fg 亮度
-    判定（与 SmoothScrollArea.update_theme 一致），Dark 画月亮、Light 画太阳。
-    线稿颜色用 fg。hover 时画淡圆角背景（用 sidebar_hover 半透明），鼠标进/
-    出各一次、无高频来回累积问题，故无需 CompositionMode_Source 清底。
-    """
-    clicked = Signal()
-
-    def __init__(self, size=32, parent=None):
-        super().__init__(parent)
-        self.setObjectName("ThemeToggleButton")
-        self.setFixedSize(size, size)
-        self.setCursor(Qt.PointingHandCursor)
-        self._hover = False
-
-    def _current_is_dark(self):
-        theme = self.window().theme_data if hasattr(self.window(), 'theme_data') else None
-        from ui.themes import THEMES
-        theme = theme or THEMES["Light"]
-        return qcolor(theme.get('fg', '#111827')).lightness() > 128
-
-    def enterEvent(self, event):
-        self._hover = True
-        self.update()
-        super().enterEvent(event)
-
-    def leaveEvent(self, event):
-        self._hover = False
-        self.update()
-        super().leaveEvent(event)
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.clicked.emit()
-        super().mousePressEvent(event)
-
-    def paintEvent(self, event):
-        theme = self.window().theme_data if hasattr(self.window(), 'theme_data') else None
-        from ui.themes import THEMES
-        theme = theme or THEMES["Light"]
-
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, True)
-        rect = QRectF(self.rect())
-
-        if self._hover:
-            hover_bg = qcolor(theme.get('sidebar_hover', 'rgba(0,0,0,0.045)'))
-            hover_bg.setAlpha(36)
-            painter.setBrush(hover_bg)
-            painter.setPen(Qt.NoPen)
-            painter.drawRoundedRect(rect.adjusted(2, 2, -2, -2), 7, 7)
-
-        # 图标：Dark 画月亮、Light 画太阳；线稿颜色用 fg
-        icon_color = qcolor(theme.get('fg', '#111827'))
-        icon_name = "moon" if self._current_is_dark() else "sun"
-        pad = 5.0
-        painter.setPen(QPen(icon_color, 1.85, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-        painter.setBrush(Qt.NoBrush)
-        draw_icon(painter, icon_name, rect.adjusted(pad, pad, -pad, -pad), icon_color, 1.85)
+        draw_icon(painter, "brand-shield", icon_rect, accent, ICON_STROKE)
 
 
 class SectionHeader(QWidget):
@@ -303,9 +240,11 @@ class TaskWorkspacePanel(QFrame):
         title_box.addWidget(self.subtitle_label)
         h_header.addLayout(title_box)
         h_header.addStretch()
-        # 避让右上角悬浮的 ThemeToggleButton overlay（34 宽 + 8 margin + 8 间隙）:
+        # 避让右上角悬浮的 ThemeToggleButton overlay（size + 左右 margin + 投影间隙）:
         # 不改切换器定位，仅让计数药丸左移到其投影之外，两者互不遮挡。
-        h_header.addSpacing(50)
+        # 值同源 ui.themes.THEME_TOGGLE_AVOID，改切换器几何这里自动跟随，杜绝 50 魔数。
+        from ui.themes import THEME_TOGGLE_AVOID
+        h_header.addSpacing(THEME_TOGGLE_AVOID)
 
         self.count_label = QLabel("0 个文件")
         self.count_label.setObjectName("QueueCounter")
@@ -689,172 +628,6 @@ class GlassWidget(QWidget):
         painter.drawPath(path)
 
 
-class ThemeButton(QPushButton):
-    """主题选择按钮 - 毛玻璃风格"""
-    def __init__(self, theme_name, color, parent=None):
-        super().__init__(theme_name, parent)
-        self.theme_name = theme_name
-        self.color = color
-        self.setCursor(Qt.PointingHandCursor)
-        self.setFixedSize(120, 40)
-        self.setFont(QFont(get_system_font_family(), 9))
-
-        # 缩放动画
-        self._scale = 0.0
-        self._scale_anim = QPropertyAnimation(self, b"scale", self)
-        self._scale_anim.setDuration(300)
-        self._scale_anim.setEasingCurve(QEasingCurve.OutBack)
-
-    def get_scale(self):
-        return self._scale
-
-    def set_scale(self, v):
-        self._scale = v
-        self.update()
-
-    scale = Property(float, get_scale, set_scale)
-
-    def show_animated(self, delay=0):
-        """带动画显示"""
-        self._scale_anim.stop()
-        self._scale_anim.setStartValue(0.0)
-        self._scale_anim.setEndValue(1.0)
-        if delay > 0:
-            from PySide6.QtCore import QTimer
-            QTimer.singleShot(delay, self._scale_anim.start)
-        else:
-            self._scale_anim.start()
-
-    def hide_animated(self):
-        """带动画隐藏"""
-        self._scale_anim.stop()
-        self._scale_anim.setStartValue(1.0)
-        self._scale_anim.setEndValue(0.0)
-        self._scale_anim.start()
-
-    def paintEvent(self, event):
-        if self._scale < 0.01:
-            return
-
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-
-        # 应用缩放
-        painter.translate(self.width() / 2, self.height() / 2)
-        painter.scale(self._scale, self._scale)
-        painter.translate(-self.width() / 2, -self.height() / 2)
-
-        # 绘制背景
-        rect = self.rect()
-        painter.setBrush(QColor(self.color))
-        painter.setPen(Qt.NoPen)
-        painter.drawRoundedRect(rect, 8, 8)
-
-        # 绘制文本
-        painter.setPen(QColor("#ffffff"))
-        painter.setFont(self.font())
-        painter.drawText(rect, Qt.AlignCenter, self.theme_name)
-
-
-class ThemeSelector(QWidget):
-    """主题选择器弹出菜单 - 毛玻璃风格"""
-    theme_selected = Signal(str)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setAttribute(Qt.WA_DeleteOnClose, False)
-        self.theme_buttons = []
-        self._is_visible = False
-        self._bg_opacity = 0.0
-
-        # 背景透明度动画
-        self._bg_anim = QPropertyAnimation(self, b"bgOpacity", self)
-        self._bg_anim.setDuration(200)
-        self._bg_anim.setEasingCurve(QEasingCurve.OutQuad)
-
-    def get_bg_opacity(self):
-        return self._bg_opacity
-
-    def set_bg_opacity(self, v):
-        self._bg_opacity = v
-        self.update()
-
-    bgOpacity = Property(float, get_bg_opacity, set_bg_opacity)
-
-    def setup_themes(self, themes):
-        """设置主题按钮"""
-        from ui.themes import THEMES
-        y_offset = 10
-
-        for i, (name, theme_data) in enumerate(THEMES.items()):
-            btn = ThemeButton(name, theme_data['accent'], self)
-            btn.move(10, y_offset)
-            btn.clicked.connect(lambda checked, n=name: self.on_theme_clicked(n))
-            self.theme_buttons.append(btn)
-            y_offset += 50
-
-        self.setFixedSize(140, y_offset + 10)
-
-    def on_theme_clicked(self, theme_name):
-        """主题被点击"""
-        self._is_visible = False
-        self.theme_selected.emit(theme_name)
-        self.hide_animated()
-
-    def show_at(self, pos):
-        """在指定位置显示"""
-        self.move(pos)
-        self.show()
-        self.activateWindow()
-        self.setFocus()
-        self._is_visible = True
-
-        # 背景淡入
-        self._bg_anim.stop()
-        self._bg_anim.setStartValue(0.0)
-        self._bg_anim.setEndValue(1.0)
-        self._bg_anim.start()
-
-        # 依次显示按钮
-        for i, btn in enumerate(self.theme_buttons):
-            btn.show_animated(delay=i * 50)
-
-    def hide_animated(self):
-        """带动画隐藏"""
-        self._is_visible = False
-
-        # 背景淡出
-        self._bg_anim.stop()
-        self._bg_anim.setStartValue(self._bg_opacity)
-        self._bg_anim.setEndValue(0.0)
-        self._bg_anim.finished.connect(self.hide)
-        self._bg_anim.start()
-
-        # 按钮隐藏
-        for btn in reversed(self.theme_buttons):
-            btn.hide_animated()
-
-    def focusOutEvent(self, event):
-        """失去焦点时关闭"""
-        if self._is_visible:
-            self.hide_animated()
-        super().focusOutEvent(event)
-
-    def paintEvent(self, event):
-        """绘制半透明背景"""
-        if self._bg_opacity < 0.01:
-            return
-
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        bg_color = QColor(0, 0, 0, int(100 * self._bg_opacity))
-        painter.setBrush(bg_color)
-        painter.setPen(Qt.NoPen)
-        painter.drawRoundedRect(self.rect(), 12, 12)
-
-
 class CustomCheckBox(QCheckBox):
     """
     自定义复选框 - 毛玻璃风格
@@ -1123,7 +896,7 @@ class AnimatedSidebarButton(QPushButton):
         ix = round(rect.left() + 21)
         iy = rect.center().y() - icon_size / 2      # 44 高下 = 12 ✓
         icon_rect = QRectF(ix, iy, icon_size, icon_size)
-        draw_icon(painter, self.icon_emoji, icon_rect, icon_color, 1.85)
+        draw_icon(painter, self.icon_emoji, icon_rect, icon_color, ICON_STROKE)
 
         if self._check_progress > 0.35:
             accent_hex = theme.get('accent', '#6366F1')
@@ -1157,7 +930,7 @@ class ThemeToggleButton(QPushButton):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("ThemeToggleButton")
-        self.setFixedSize(34, 34)
+        self.setFixedSize(THEME_TOGGLE_SIZE, THEME_TOGGLE_SIZE)
         self.setCursor(Qt.PointingHandCursor)
         self._hover_progress = 0.0
         self._hover_anim = QPropertyAnimation(self, b"hoverProgress", self)
@@ -1218,7 +991,7 @@ class ThemeToggleButton(QPushButton):
         # 与太阳同坐标系视觉重量一致，告别自绘 OddEvenFill 实心月牙"被啃一块"的观感。
         icon_name = "moon" if is_dark else "sun"
         icon_rect = QRectF(self.rect()).adjusted(6, 6, -6, -6)
-        draw_icon(painter, icon_name, icon_rect, icon_color, 1.85)
+        draw_icon(painter, icon_name, icon_rect, icon_color, ICON_STROKE)
 
 
 class ModernButton(QPushButton):
@@ -1316,7 +1089,7 @@ class ModernButton(QPushButton):
             else:
                 icon_color = theme.get('fg_secondary', '#4B5563')
             if icon_color != self._last_icon_color:
-                self.setIcon(make_icon(self.icon_name, icon_color, 18, 1.85))
+                self.setIcon(make_icon(self.icon_name, icon_color, 18, ICON_STROKE))
                 self._last_icon_color = icon_color
 
         if self.color_type == "primary":
@@ -1330,7 +1103,7 @@ class ModernButton(QPushButton):
                     padding: 0 24px;
                     font-weight: 700;
                     font-size: 14px;
-                    min-height: 48px;
+                    min-height: {theme.get('control_primary_height', '48px')};
                 }}
                 QPushButton:hover {{
                     background: {theme.get('accent_gradient_hover', '#2994FF')};
@@ -1354,7 +1127,7 @@ class ModernButton(QPushButton):
                     padding: 0 22px;
                     font-weight: 600;
                     font-size: 14px;
-                    min-height: 44px;
+                    min-height: {theme.get('control_primary_height', '48px')};
                 }}
                 QPushButton:hover {{
                     background: rgba(255, 59, 48, 0.18);
@@ -1379,7 +1152,7 @@ class ModernButton(QPushButton):
                     padding: 0 14px 0 16px;
                     font-weight: 600;
                     font-size: 13px;
-                    min-height: 40px;
+                    min-height: {theme.get('control_height', '40px')};
                 }}
                 QPushButton:hover {{
                     background: {theme.get('card_bg_hover', 'rgba(255, 255, 255, 0.48)')};
@@ -1516,7 +1289,7 @@ class DragDropListWidget(QListWidget):
                 "folder-plus",
                 icon_rect.adjusted(10, 10, -10, -10),
                 qcolor(self.theme_data.get('accent', '#007AFF')),
-                1.85,
+                ICON_STROKE,
             )
 
             # 主文字

@@ -6,6 +6,25 @@ Light 主题以 macOS Liquid Glass 为第一目标；非 macOS 平台使用同�
 语义 token 做 Qt/QSS 拟玻璃降级，避免为了兼容而牺牲 macOS 质感。
 """
 
+# ----------------------------------------------------------------------
+# 模块级几何常量：Python 代码侧的单一定义点。
+#
+# 主题 dict（下方 THEMES）里保留这些键的同名 **字符串** 版本，仅供 QSS
+# 模板插值；而本处的 int/float 常量供 Python 代码直接读取——setFixedHeight、
+# _position_theme_toggle、AnimatedSidebarButton/ThemeToggleButton 的图标线宽
+# 等全部引用这里，避免 50/34/8/36/1.85 等"魔数"在多文件各写一份、改一处忘
+# 一处。两主题几何取值相同，故不入 dict 而设为模块常量更直接。
+# ----------------------------------------------------------------------
+CONTROL_HEIGHT = 40          # 输入框 / 次要按钮 / 下拉框统一高度
+CONTROL_PRIMARY_HEIGHT = 48  # 主操作按钮(primary)保留更高，突出主次层级
+COMBO_HEIGHT = CONTROL_HEIGHT            # 下拉框与输入框同高
+THEME_TOGGLE_SIZE = 34       # 右上角日/月切换器边长
+THEME_TOGGLE_MARGIN = 8      # 切换器距右上角的留白
+THEME_TOGGLE_GAP = 8         # 切换器投影与计数药丸的间隙
+# TaskWorkspacePanel header 右侧避让宽度 = 切换器 + 右留白*2 + 投影 + 间隙
+THEME_TOGGLE_AVOID = THEME_TOGGLE_SIZE + 2 * THEME_TOGGLE_MARGIN + THEME_TOGGLE_GAP
+ICON_STROKE = 1.85           # 图标线稿粗细单一真源
+
 THEMES = {
     "Light": {
         # macOS native vibrancy
@@ -80,6 +99,12 @@ THEMES = {
         "body_weight": "400",
         "caption_size": "11px",
         "caption_weight": "400",
+        # 语义字号补齐：取代 apply_theme 内硬编码的 16/14/13/12/11/10px。
+        # 11px 复用既有 caption_size，不再单列 meta_size 避免同值多 token 的歧义。
+        "title_size": "16px",         # AppTitle / WorkspaceTitle
+        "subtitle_size": "12px",      # WorkspaceSubtitle / 子标题
+        "label_size": "13px",          # SectionHeaderTitle / 按钮正文
+        "micro_size": "10px",          # SidebarGroupLabel
 
         # Geometry
         "radius_xs": "6px",
@@ -87,6 +112,20 @@ THEMES = {
         "radius_md": "10px",
         "radius_lg": "16px",
         "radius_xl": "20px",
+        # 派生圆角：贴合既有视觉，消除 QSS 内 14/12 裸数字。
+        "radius_panel": "14px",  # TaskWorkspacePanel / ConfigPanel 主面板
+        "radius_list": "12px",   # TaskQueueList / KeyPairList 列表容器
+        # 控件高度单一真源：取代散落 setFixedHeight(34/36) 与 QSS min-height 三档。
+        "control_height": "40px",
+        "control_primary_height": "48px",
+        "combo_height": "40px",
+        # 右上角主题切换器几何：_position_theme_toggle 与 TaskWorkspacePanel
+        # header 避让共用，避免 50 魔数两处不同步。
+        "theme_toggle_size": 34,
+        "theme_toggle_margin": 8,
+        "theme_toggle_gap": 8,
+        # 图标线稿粗细单一真源（取代散落 1.8/1.85 手传）。
+        "icon_stroke": 1.85,
 
         # QSS cannot render box-shadow; these are semantic notes for custom painters.
         "shadow_sm": "rgba(15, 23, 42, 0.06)",
@@ -167,12 +206,32 @@ THEMES = {
         "body_weight": "400",
         "caption_size": "11px",
         "caption_weight": "400",
+        # 语义字号补齐：取代 apply_theme 内硬编码的 16/14/13/12/11/10px。
+        # 11px 复用既有 caption_size，不再单列 meta_size 避免同值多 token 的歧义。
+        "title_size": "16px",         # AppTitle / WorkspaceTitle
+        "subtitle_size": "12px",      # WorkspaceSubtitle / 子标题
+        "label_size": "13px",          # SectionHeaderTitle / 按钮正文
+        "micro_size": "10px",          # SidebarGroupLabel
 
         "radius_xs": "6px",
         "radius_sm": "8px",
         "radius_md": "10px",
         "radius_lg": "16px",
         "radius_xl": "20px",
+        # 派生圆角：贴合既有视觉，消除 QSS 内 14/12 裸数字。
+        "radius_panel": "14px",  # TaskWorkspacePanel / ConfigPanel 主面板
+        "radius_list": "12px",   # TaskQueueList / KeyPairList 列表容器
+        # 控件高度单一真源：取代散落 setFixedHeight(34/36) 与 QSS min-height 三档。
+        "control_height": "40px",
+        "control_primary_height": "48px",
+        "combo_height": "40px",
+        # 右上角主题切换器几何：_position_theme_toggle 与 TaskWorkspacePanel
+        # header 避让共用，避免 50 魔数两处不同步。
+        "theme_toggle_size": 34,
+        "theme_toggle_margin": 8,
+        "theme_toggle_gap": 8,
+        # 图标线稿粗细单一真源（取代散落 1.8/1.85 手传）。
+        "icon_stroke": 1.85,
 
         "shadow_sm": "rgba(0, 0, 0, 0.20)",
         "shadow_md": "rgba(0, 0, 0, 0.28)",

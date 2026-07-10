@@ -1968,10 +1968,13 @@ class MainWindow(QMainWindow):
         }}
         """
         self.setStyleSheet(qss)
-        # 侧栏是半透明 sidebar 色叠在 MainSurface 之上的容器，切主题时若不清底，
-        # 旧主题深色像素残在 backing store，新主题半透明色叠上去 → “底色发暗/发灰”
-        # 残影。repaint() 立即强制重绘清掉旧像素；放 setStyleSheet 之后、子件 update
-        # 之前，保证子件在已清底的新容器上重画、不闪。
+        # 侧栏半透明 sidebar 色(0.84/0.92)透出的是衬底 MainSurface 的 bg。切主题时若只
+        # 重画 sidebar 自身半透明层、不管衬底，sidebar 会透出 MainSurface 残留的旧主题
+        # 深色 → 切回白天残留黑夜底色，侧栏整体“发暗/发灰”。故须按“衬底→半透明→子件”
+        # 顺序强制重绘整条：顶层 QMainWindow → MainSurface(真正衬底) → 半透明 Sidebar。
+        # 衬底先清成新主题 bg，半透明 sidebar 叠在新干净衬底上才不透出旧 Dark 色。
+        self.repaint()
+        self.main_surface.repaint()
         self.sidebar.repaint()
 
         for btn in self.all_buttons:

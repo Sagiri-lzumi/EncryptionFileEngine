@@ -976,6 +976,9 @@ class ThemeToggleButton(QPushButton):
         self.setObjectName("ThemeToggleButton")
         self.setFixedSize(THEME_TOGGLE_SIZE, THEME_TOGGLE_SIZE)
         self.setCursor(Qt.PointingHandCursor)
+        # 自绘 paintEvent 已清底透明；该属性让 Qt 知道控件自身透明，跨平台兜底，
+        # 防部分平台插件在 paintEvent 之外仍绘 QPushButton native 非透明方形底。
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
         self._hover_progress = 0.0
         self._hover_anim = QPropertyAnimation(self, b"hoverProgress", self)
         self._hover_anim.setDuration(160)

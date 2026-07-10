@@ -1558,6 +1558,14 @@ class MainWindow(QMainWindow):
         QWidget#RightArea {{
             background: transparent;
         }}
+        /* 主题切换器是自绘 paintEvent 的 QPushButton：paintEvent 已用
+           CompositionMode_Source 清底透明、仅画图标+hover 淡圆。但 QPushButton 的
+           native 默认底+边框不被 paintEvent 覆盖，会先画一圈方形不透明底冒成“突兀方块”。
+           这里用 objectName 规则关掉 native 底与边框，透出玻璃，方块消失。 */
+        QPushButton#ThemeToggleButton {{
+            background: transparent;
+            border: none;
+        }}
 
         QFrame#Sidebar {{
             background: {t['sidebar']};

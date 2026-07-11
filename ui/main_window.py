@@ -1624,7 +1624,7 @@ class MainWindow(QMainWindow):
             color: {t['accent']};
             background: {t['accent_light']};
             border: 1px solid {t['sidebar_active_border']};
-            border-radius: {t.get('radius_pill', '9px')};  # 与 SystemBadge/KeyPairStatus 同款半圆药丸端
+            border-radius: {t.get('radius_pill', '9px')};  /* 与 SystemBadge/KeyPairStatus 同款半圆药丸端 */
             padding: 4px 11px;
             font-size: {t.get('caption_size', '11px')};
             font-weight: 700;
@@ -1695,7 +1695,7 @@ class MainWindow(QMainWindow):
             font-size: {t.get('caption_size', '11px')};
             background: {t['accent_light']};
             padding: 4px 11px;
-            border-radius: {t.get('radius_pill', '9px')};  # 与 QueueCounter/KeyPairStatus 同款半圆药丸端
+            border-radius: {t.get('radius_pill', '9px')};  /* 与 QueueCounter/KeyPairStatus 同款半圆药丸端 */
             border: 1px solid {t['sidebar_active_border']};
         }}
 
@@ -1853,7 +1853,7 @@ class MainWindow(QMainWindow):
         QProgressBar {{
             background: {t['card_bg']};
             border: none;
-            border-radius: 3px;  # 高度 6px 的半圆端(radius=height/2),比例约束,保留字面
+            border-radius: 3px;  /* 高度 6px 的半圆端(radius=height/2),比例约束,保留字面 */
             text-align: center;
             height: 6px;
         }}

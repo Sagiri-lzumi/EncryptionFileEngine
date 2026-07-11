@@ -90,7 +90,7 @@ class CleanStackedWidget(QStackedWidget):
         painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
 
         rect = QRectF(self.rect())
-        radius = 16.0
+        radius = 16.0  # = radius_lg(HeaderCapsule 容器圆角)
         bg = qcolor(theme.get('bg_vibrancy', theme.get('panel', 'rgba(255,255,255,0.42)')))
         border = qcolor(theme.get('glass_border_subtle', 'rgba(255,255,255,0.24)'))
 
@@ -156,7 +156,7 @@ class IconBadge(QWidget):
             rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
             painter.setPen(QPen(border, 1.0))
             painter.setBrush(bg)
-            painter.drawRoundedRect(rect, 8, 8)
+            painter.drawRoundedRect(rect, 8, 8)  # = radius_sm(SystemGlyph 自绘徽标)
         draw_icon(painter, self.icon_name, icon_rect, icon_color, ICON_STROKE)
 
 
@@ -617,6 +617,8 @@ class GlassWidget(QWidget):
         painter.setRenderHint(QPainter.Antialiasing)
 
         # 绘制半透明背景
+        # 圆角 = radius_xl(20px)。GlassWidget 无 _theme_data 注入路径,
+        # 此处用字面 20 与 themes.radius_xl 同值;若以后接入主题,改读 token。
         path = QPainterPath()
         path.addRoundedRect(QRectF(self.rect()), 20, 20)
 
@@ -751,7 +753,7 @@ class CustomCheckBox(QCheckBox):
             painter.setBrush(bg_color)
             painter.setPen(QPen(border_color, 1.2))
 
-        painter.drawRoundedRect(box_rect, 6, 6)
+        painter.drawRoundedRect(box_rect, 6, 6)  # 勾选框圆角 = radius_xs(CustomCheckBox)
 
         # 绘制对钩（带动画）
         if self._check_progress > 0.01:
@@ -911,7 +913,7 @@ class AnimatedSidebarButton(QPushButton):
 
         # === 胶囊背景区域 ===
         capsule_rect = rect.adjusted(6, 4, -6, -4)
-        radius = 8
+        radius = 8  # 侧栏按钮胶囊 = radius_sm;光标控件则用 radius_md,见 ActionButton
 
         if self._hover_progress > 0.01 and self._check_progress < 0.01:
             hover_bg = qcolor(theme.get('sidebar_hover', 'rgba(255, 255, 255, 0.45)'))
@@ -1028,10 +1030,10 @@ class ThemeToggleButton(QPushButton):
             hover_bg.setAlpha(max(18, int(110 * self._hover_progress)))
             painter.setPen(Qt.NoPen)
             painter.setBrush(hover_bg)
-            # 胶囊 hover 底：与 AnimatedSidebarButton 同款圆角矩形(radius=7，
-            # 34 高下接近正圆胶囊带切角语义)；旧版 drawEllipse 是 30px 圆、比 22px
-            # 图标大像散光圈，现与侧栏按钮 hover 形态统一。
-            painter.drawRoundedRect(rect.adjusted(2, 2, -2, -2), 7, 7)
+            # 胶囊 hover 底：与 AnimatedSidebarButton 同款圆角矩形(radius=8=radius_sm,
+            # 旧版注释误写 7)。34 高下接近正圆胶囊带切角语义;旧版 drawEllipse 是 30px 圆、
+            # 比 22px 图标大像散光圈,现与侧栏按钮 hover 形态统一。
+            painter.drawRoundedRect(rect.adjusted(2, 2, -2, -2), 8, 8)  # radius_sm
 
         icon_color = qcolor(theme.get('fg_secondary', '#475569'))
         # 复用 ui/icons.py 的矢量 sun/moon：与侧栏/徽标同款线风，弯月左右对称、
@@ -1144,9 +1146,11 @@ class ModernButton(QPushButton):
                 QPushButton {{
                     background: {theme.get('accent_gradient', '#007AFF')};
                     color: #ffffff;
+                    /* 四角统一单一 border：叠 border-bottom 改色使圆角弧线在底两角
+                       颜色/粗细断裂,观感像底部两角是直的/有方块。立体感由按钮
+                       渐变背景与高光承担,不再叠改色底边。圆角走 radius_md token。*/
                     border: 1px solid rgba(255, 255, 255, 0.42);
-                    border-bottom: 1px solid rgba(0, 0, 0, 0.14);
-                    border-radius: 10px;
+                    border-radius: {theme.get('radius_md', '10px')};
                     padding: 0 24px;
                     font-weight: 700;
                     font-size: 14px;
@@ -1169,8 +1173,7 @@ class ModernButton(QPushButton):
                     background: {theme.get('danger_light', 'rgba(255, 59, 48, 0.12)')};
                     color: {theme.get('danger', '#FF3B30')};
                     border: 1px solid rgba(255, 59, 48, 0.24);
-                    border-bottom: 1px solid rgba(255, 59, 48, 0.30);
-                    border-radius: 10px;
+                    border-radius: {theme.get('radius_md', '10px')};
                     padding: 0 22px;
                     font-weight: 600;
                     font-size: 14px;
@@ -1194,8 +1197,9 @@ class ModernButton(QPushButton):
                     background: {theme.get('card_bg', 'rgba(255, 255, 255, 0.34)')};
                     color: {theme.get('fg', '#1D1D1F')};
                     border: 1px solid {theme.get('glass_border_subtle', 'rgba(255, 255, 255, 0.42)')};
-                    border-bottom: 1px solid {theme.get('border_dark', 'rgba(15, 23, 42, 0.08)')};
-                    border-radius: 9px;
+                    /* secondary 圆角统一到与全局 QPushButton 一致的 radius_sm,
+                       消除原 9px 孤数(全局普通按钮 8px)。*/
+                    border-radius: {theme.get('radius_sm', '8px')};
                     padding: 0 14px 0 16px;
                     font-weight: 600;
                     font-size: 13px;
@@ -1316,7 +1320,7 @@ class DragDropListWidget(QListWidget):
             pen.setWidth(1.5)
             pen.setDashPattern([6, 4])
             painter.setPen(pen)
-            painter.drawRoundedRect(rect, 12, 12)
+            painter.drawRoundedRect(rect, 12, 12)  # 拖放区圆角 = radius_md
 
             # 提示文字 - 更精致的排版
             painter.setPen(qcolor(self.theme_data.get('fg_secondary', 'rgba(0, 0, 0, 0.50)')))
@@ -1330,7 +1334,7 @@ class DragDropListWidget(QListWidget):
             icon_border = qcolor(self.theme_data.get('sidebar_active_border', 'rgba(0, 122, 255, 0.28)'))
             painter.setBrush(icon_bg)
             painter.setPen(QPen(icon_border, 1.0))
-            painter.drawRoundedRect(icon_rect, 12, 12)
+            painter.drawRoundedRect(icon_rect, 12, 12)  # 图标块圆角 = radius_md
             draw_icon(
                 painter,
                 "folder-plus",
@@ -1387,7 +1391,7 @@ class GlassCard(QFrame):
         painter.setRenderHint(QPainter.Antialiasing)
 
         rect = QRectF(self.rect())
-        radius = 12.0
+        radius = 12.0  # 玻璃卡片圆角 = radius_md
 
         # 1. 绘制柔和阴影 (多层弥散阴影)
         # box-shadow: 0 4px 24px -1px rgba(0, 0, 0, 0.05), 0 0 1px 0 rgba(0, 0, 0, 0.1)
@@ -1480,7 +1484,7 @@ class ConfigPanelCard(QFrame):
         painter.setRenderHint(QPainter.Antialiasing)
 
         rect = QRectF(self.rect())
-        radius = 12.0
+        radius = 12.0  # 可折叠卡片圆角 = radius_md
 
         painter.setPen(Qt.NoPen)
         painter.setBrush(qcolor(theme.get('card_bg', 'rgba(255, 255, 255, 0.34)')))
@@ -1562,7 +1566,7 @@ class SystemSwitchButton(QPushButton):
         painter.setRenderHint(QPainter.Antialiasing)
 
         rect = QRectF(self.rect())
-        radius = 6.0
+        radius = 6.0  # 开关 track 圆角 = radius_xs
 
         # === 根据切换进度选择渐变颜色 ===
         # 统一跟随主题 token，避免系统切换按钮脱离整体视觉体系。
@@ -1738,7 +1742,7 @@ class GlassProgressBar(QWidget):
         painter.setRenderHint(QPainter.Antialiasing)
 
         rect = QRectF(self.rect())
-        radius = 3.0
+        radius = 3.0  # 进度轨道半圆端(radius=track高度/2),比例约束,保留字面
 
         # === 1. 绘制背景轨道 (毛玻璃) ===
         # background: rgba(0, 0, 0, 0.06)

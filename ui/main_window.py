@@ -1569,8 +1569,10 @@ class MainWindow(QMainWindow):
 
         QFrame#Sidebar {{
             background: {t['sidebar']};
+            /* 四角统一单一 border：叠 border-bottom 改色会使圆角弧线在底两角
+               颜色/粗细断裂(Dark 下尤甚),观感像底部两角是直的/有方块。
+               去叠底边,立体感由容器自绘阴影承担。*/
             border: 1px solid {t['glass_border']};
-            border-bottom: 1px solid {t['glass_border_subtle']};
             border-radius: {t['radius_lg']};
         }}
         QLabel#AppTitle {{
@@ -1598,13 +1600,11 @@ class MainWindow(QMainWindow):
         QFrame#ContentPanel {{
             background: {t['panel_elevated']};
             border: 1px solid {t['glass_border']};
-            border-bottom: 1px solid {t['glass_border_subtle']};
             border-radius: {t['radius_lg']};
         }}
         QFrame#TaskWorkspacePanel {{
             background: {t['panel_elevated']};
             border: 1px solid {t['glass_border']};
-            border-bottom: 1px solid {t['glass_border_subtle']};
             border-radius: {t.get('radius_panel', '14px')};
         }}
         QLabel#WorkspaceTitle {{
@@ -1624,7 +1624,7 @@ class MainWindow(QMainWindow):
             color: {t['accent']};
             background: {t['accent_light']};
             border: 1px solid {t['sidebar_active_border']};
-            border-radius: {t['radius_xs']};
+            border-radius: {t.get('radius_pill', '9px')};  # 与 SystemBadge/KeyPairStatus 同款半圆药丸端
             padding: 4px 11px;
             font-size: {t.get('caption_size', '11px')};
             font-weight: 700;
@@ -1638,7 +1638,6 @@ class MainWindow(QMainWindow):
         QFrame#ConfigPanel {{
             background: {t['panel_elevated']};
             border: 1px solid {t['config_panel_border']};
-            border-bottom: 1px solid {t['glass_border_subtle']};
             border-radius: {t.get('radius_panel', '14px')};
         }}
         QWidget#ConfigTitleArea {{
@@ -1652,8 +1651,10 @@ class MainWindow(QMainWindow):
         QFrame#ExecutionFooter {{
             background: {t['panel_elevated']};
             border-top: 1px solid {t['separator']};
-            border-bottom-left-radius: 10px;
-            border-bottom-right-radius: 10px;
+            /* 统一四角圆角：只设 border-top 时上面两角属预期直角分线,
+               但底部两角必须圆且与父 TaskWorkspacePanel(radius_panel)对齐;
+               原来仅设底两角 10px 既错位(父 14px)又使中间段无 radius 渲染为直角。*/
+            border-radius: {t.get('radius_panel', '14px')};
         }}
         QStackedWidget#ExecutionActions {{
             background: transparent;
@@ -1694,14 +1695,16 @@ class MainWindow(QMainWindow):
             font-size: {t.get('caption_size', '11px')};
             background: {t['accent_light']};
             padding: 4px 11px;
-            border-radius: {t['radius_xs']};
+            border-radius: {t.get('radius_pill', '9px')};  # 与 QueueCounter/KeyPairStatus 同款半圆药丸端
             border: 1px solid {t['sidebar_active_border']};
         }}
 
         QPushButton {{
             background: {t['panel']};
+            /* 四角统一 border：叠 border_dark 底边使圆角弧线在底两角颜色突变
+               (Dark 下 0.34 vs 0.13 差异巨大),底部两角观感变直/有方块。
+               删叠底边,四角弧线一致。*/
             border: 1px solid {t['border']};
-            border-bottom: 1px solid {t['border_dark']};
             border-radius: {t['radius_sm']};
             color: {t['fg']};
             padding: 8px 18px;
@@ -1719,7 +1722,6 @@ class MainWindow(QMainWindow):
         QLineEdit, QTextEdit, QComboBox {{
             background: {t['input_bg']};
             border: 1px solid {t['input_border']};
-            border-bottom: 1px solid {t['border_dark']};
             border-radius: {t['radius_md']};
             color: {t['fg']};
             padding: 0 14px;
@@ -1761,7 +1763,6 @@ class MainWindow(QMainWindow):
         QGroupBox#GlassGroupBox {{
             background: {t['card_bg']};
             border: 1px solid {t['glass_border_subtle']};
-            border-bottom: 1px solid {t['border_dark']};
             border-radius: {t['radius_md']};
             margin-top: 20px;
             padding: 18px 14px 14px 14px;
@@ -1781,7 +1782,6 @@ class MainWindow(QMainWindow):
         QFrame#InspectorSection {{
             background: {t['surface']};
             border: 1px solid {t['glass_border_subtle']};
-            border-bottom: 1px solid {t['glass_border_subtle']};
             border-radius: {t.get('radius_md', '10px')};
         }}
 
@@ -1806,7 +1806,6 @@ class MainWindow(QMainWindow):
         QFrame#StatusContainer {{
             background: {t['card_bg']};
             border: 1px solid {t['glass_border_subtle']};
-            border-bottom: 1px solid {t['border_dark']};
             border-radius: {t['radius_md']};
         }}
         QLabel#StatusLabel {{
@@ -1816,7 +1815,6 @@ class MainWindow(QMainWindow):
         QListWidget {{
             background: {t['list_bg']};
             border: 1px solid {t['glass_border_subtle']};
-            border-bottom: 1px solid {t['border_dark']};
             border-radius: {t['radius_md']};
             padding: 6px;
             outline: none;
@@ -1855,7 +1853,7 @@ class MainWindow(QMainWindow):
         QProgressBar {{
             background: {t['card_bg']};
             border: none;
-            border-radius: 3px;
+            border-radius: 3px;  # 高度 6px 的半圆端(radius=height/2),比例约束,保留字面
             text-align: center;
             height: 6px;
         }}
@@ -1893,14 +1891,12 @@ class MainWindow(QMainWindow):
         QFrame#SwitchCard {{
             background: {t['card_bg']};
             border: 1px solid {t['glass_border_subtle']};
-            border-bottom: 1px solid {t['border_dark']};
             border-radius: {t['radius_md']};
         }}
         QFrame#KeyInfoPanel,
         QFrame#KeyActionPanel {{
             background: {t['card_bg']};
             border: 1px solid {t['glass_border_subtle']};
-            border-bottom: 1px solid {t['border_dark']};
             border-radius: {t['radius_md']};
         }}
         QLabel#SystemGlyph {{
@@ -1949,7 +1945,7 @@ class MainWindow(QMainWindow):
             font-weight: 500;
         }}
         QLabel#KeyPairStatus {{
-            border-radius: 7px;  /* 状态药丸：配合 padding 4px 9px 的小药丸近半圆端，孤例保留 */
+            border-radius: {t.get('radius_pill', '9px')};  /* 状态药丸半圆端,走 token */
             padding: 4px 9px;
             font-size: {t.get('caption_size', '11px')};
             font-weight: 800;
@@ -1968,7 +1964,6 @@ class MainWindow(QMainWindow):
         QTextEdit#LogTextEdit {{
             background: {t['list_bg']};
             border: 1px solid {t['glass_border_subtle']};
-            border-bottom: 1px solid {t['border_dark']};
             border-radius: {t['radius_md']};
             padding: 12px;
             font-family: {get_monospace_font_qss()};

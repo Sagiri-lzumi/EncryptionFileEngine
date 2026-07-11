@@ -115,6 +115,7 @@ THEMES = {
         # 派生圆角：贴合既有视觉，消除 QSS 内 14/12 裸数字。
         "radius_panel": "14px",  # TaskWorkspacePanel / ConfigPanel 主面板
         "radius_list": "12px",   # TaskQueueList / KeyPairList 列表容器
+        "radius_pill": "9px",    # 状态药丸半圆端(KeyPairStatus / SystemBadge / QueueCounter)
         # 控件高度单一真源：取代散落 setFixedHeight(34/36) 与 QSS min-height 三档。
         "control_height": "40px",
         "control_primary_height": "48px",
@@ -221,6 +222,7 @@ THEMES = {
         # 派生圆角：贴合既有视觉，消除 QSS 内 14/12 裸数字。
         "radius_panel": "14px",  # TaskWorkspacePanel / ConfigPanel 主面板
         "radius_list": "12px",   # TaskQueueList / KeyPairList 列表容器
+        "radius_pill": "9px",    # 状态药丸半圆端(KeyPairStatus / SystemBadge / QueueCounter)
         # 控件高度单一真源：取代散落 setFixedHeight(34/36) 与 QSS min-height 三档。
         "control_height": "40px",
         "control_primary_height": "48px",

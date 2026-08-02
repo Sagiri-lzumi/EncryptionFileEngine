@@ -1,4 +1,4 @@
-﻿# Encryption Studio 项目深度解析（README3）
+﻿# Encryption Studio 项目深度解析
 
 > 本文件是对整个 Encryption Studio 仓库的**完整开发者级技术解读**，面向接手维护或二次开发的工程师。所有结论均直接来源于仓库当前源码（C:\EncryptionFileEngine），不依赖任何已失效的外部描述。文档以 UTF-8 编码保存。
 
@@ -150,24 +150,28 @@ EncryptionFileEngine/
 ├── .idea/                 PyCharm 工程
 ├── .claude/               Claude 配置
 ├── .git/                  Git 仓库
+├── docs/                  开发者文档
+│   ├── README.md          文档索引
+│   ├── setup.md           环境依赖与安装说明
+│   ├── technical-reference.md 开发者技术参考手册
+│   └── architecture-deep-dive.md 本文件（全面深度解析）
+├── scripts/               开发辅助脚本
+│   └── export_code.py     代码导出工具（生成 all_code.txt，被 .gitignore 忽略）
+├── tests/                 测试与实验脚本
+│   └── test_checkbox.py   复选框控件的独立测试脚本
 ├── EncryptionStudio.spec  PyInstaller 打包规格
-├── export_code.py         代码导出工具（生成 all_code.txt）
-├── all_code.txt           全仓源码合并文本（由 export_code.py 产出）
-├── test_checkbox.py       复选框控件的独立测试脚本
+├── all_code.txt           全仓源码合并文本（由 export_code.py 产出，被 .gitignore 忽略）
 ├── requirements.txt        运行依赖（PySide6/cryptography/pyobjc/pyinstaller/cx_Freeze/Nuitka）
 ├── requirements-macos.txt macOS 依赖
 ├── requirements-dev.txt   开发依赖
-├── requirements_info.md   依赖说明
 ├── fileenc.ico            应用图标
 ├── LICENSE                许可证
 ├── .gitignore / .gitattributes
 ├── AGENTS.md              Codex/Agent 协作规范
-├── README.md              项目介绍（面向用户，含截图）
-├── README2.md             早期开发者技术文档（v2.0 增强版，内容较老）
-└── README3.md             本文件（全面深度解析）
+└── README.md              项目介绍（面向用户，含截图）
 ```
 
-> 说明：`README2.md` 与 `README.md` 的中文内容用 GB18030 写入但部分工具按 UTF-8 读取会出现乱码；本 README3 全部以 UTF-8 重新编写，以当前源码为唯一事实来源。
+> 说明：`technical-reference.md` 与 `README.md` 的中文内容用 GB18030 写入但部分工具按 UTF-8 读取会出现乱码；本文件全部以 UTF-8 重新编写，以当前源码为唯一事实来源。
 
 ---
 
@@ -251,7 +255,7 @@ core/aes_cipher.py、core/cipher_base.py、core/file_format.py
   - 注：`OriginalFile`、`DecryptedFile`、`TempCache` 等工作区由 UI 在用户操作时按需创建，未在 `DIRS` 中硬性声明。
 - **`init_directories()`**：遍历 `DIRS.values()`，不存在则 `os.makedirs` 创建（用 `os.path.exists` 判断，行为等价于 `exist_ok=True`）。
 
-> 注意历史差异：`README2.md` 描述过更完整的 `DIRS`（含 ORIGINAL/ENCRYPTED/DECRYPTED/CHUNK_SIZES 等），但当前 `config.py` 已精简为 `KEYS` / `LOGS` 两项，其余路径在 `main_window.py` 内按需用 `os.path` 动态拼装。本 README 以**当前源码**为准。
+> 注意历史差异：`technical-reference.md` 描述过更完整的 `DIRS`（含 ORIGINAL/ENCRYPTED/DECRYPTED/CHUNK_SIZES 等），但当前 `config.py` 已精简为 `KEYS` / `LOGS` 两项，其余路径在 `main_window.py` 内按需用 `os.path` 动态拼装。本文件以**当前源码**为准。
 
 ---
 
@@ -889,7 +893,7 @@ SSD 加速是老系统 `BatchWorkerThread` 的可选特性，针对“大文件�
 - `cx_Freeze>=8.5.0` / `Nuitka>=2.8.9`：备选打包方案。
 - `requirements-macos.txt`：macOS 专属补充依赖。
 - `requirements-dev.txt`：开发期附加依赖。
-- `requirements_info.md`：说明（Python≥3.10.10；`colorama` 可选控制台彩色）。
+- `docs/setup.md`：说明（Python≥3.10.10；`colorama` 可选控制台彩色）。
 
 **打包规格 `EncryptionStudio.spec`（PyInstaller）：**
 
@@ -971,4 +975,4 @@ python main.py
 
 ---
 
-> **文档说明**：本 README3.md 由对当前仓库源码逐文件通读后整理，所有架构结论、格式规范、流程链路均可在对应源文件中直接验证。若源码后续演进，请同步维护本文对应章节。
+> **文档说明**：本文件由对当前仓库源码逐文件通读后整理，所有架构结论、格式规范、流程链路均可在对应源文件中直接验证。若源码后续演进，请同步维护本文对应章节。

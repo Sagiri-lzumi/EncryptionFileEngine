@@ -81,12 +81,17 @@ EncryptionFileEngine/
 │   ├── platform_fonts.py    # 跨平台字体选择工具
 │   └── main_window.py       # 主窗口（5 个核心类 + 6 个工具函数，约 700 行）
 │
-├── Test/                    # ✅ 自动化测试目录
-│   ├── data/                #   测试数据样本
-│   ├── output/              #   测试输出目录
-│   ├── generate_test_data.py
-│   ├── run_all_tests.py
-│   └── test_*.py
+├── docs/                    # 📚 开发者文档
+│   ├── README.md            #   文档索引
+│   ├── setup.md             #   环境依赖与安装说明
+│   ├── technical-reference.md # 本文档（面向开发者的技术手册）
+│   └── architecture-deep-dive.md # 完整深度解析
+│
+├── scripts/                 # 🛠️ 开发辅助脚本
+│   └── export_code.py       #   代码导出工具（被 .gitignore 忽略）
+│
+├── tests/                   # ✅ 测试与实验脚本
+│   └── test_checkbox.py     #   复选框样式测试脚本
 │
 ├── Keys/                    # 🔑 密钥存储目录（运行时自动创建）
 │
@@ -106,12 +111,11 @@ EncryptionFileEngine/
 │
 ├── fileenc.ico              # 应用程序图标
 ├── EncryptionStudio.spec    # PyInstaller 打包配置
-├── export_code.py           # 代码导出工具（开发辅助）
 ├── .gitignore
 ├── .gitattributes
 ├── LICENSE
 ├── README.md                # 用户使用说明（面向终端用户）
-└── README2.md               # 本文档（面向开发者的技术手册）
+└── AGENTS.md                # AI 助手协作规范
 ```
 
 ---

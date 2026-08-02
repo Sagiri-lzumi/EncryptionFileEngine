@@ -118,4 +118,12 @@ pip install -r requirements.txt
 python main.py
 ```
 
+## 📚 开发者文档
 
+如需深入了解项目架构、模块依赖、加密流程或打包细节，请查看 `docs/` 目录：
+
+- [docs/README.md](./docs/README.md) — 文档索引
+- [docs/setup.md](./docs/setup.md) — 环境依赖与安装说明
+- [docs/technical-reference.md](./docs/technical-reference.md) — 开发者技术参考手册
+- [docs/architecture-deep-dive.md](./docs/architecture-deep-dive.md) — 完整深度解析
+- [AGENTS.md](./AGENTS.md) — AI 助手协作规范
